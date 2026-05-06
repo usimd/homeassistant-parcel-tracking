@@ -1,0 +1,3 @@
+custom_components/parcel_tracker/__pycache__/
+*.pyc
+.env
