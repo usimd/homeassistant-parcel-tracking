@@ -23,11 +23,13 @@
         "description": "Configure tracking behavior",
         "data": {
           "cleanup_days": "Days after delivery before auto-removal",
-          "scan_interval_hours": "Polling interval (hours)"
+          "scan_interval_hours": "Polling interval (hours)",
+          "drop_off_location": "Drop-off location"
         },
         "data_description": {
           "cleanup_days": "Number of days after a parcel is delivered before it is automatically removed (1-30)",
-          "scan_interval_hours": "How often to poll Ship24 API for status updates (1-12 hours)"
+          "scan_interval_hours": "How often to poll Ship24 API for status updates (1-12 hours)",
+          "drop_off_location": "Preferred drop-off location for parcels (e.g. 'Behind the garage', 'With neighbor'). Shown in sensor attributes for use in automations."
         }
       }
     }

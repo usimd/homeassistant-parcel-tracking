@@ -8,10 +8,12 @@ DOMAIN: Final = "parcel_tracker"
 CONF_API_KEY: Final = "api_key"
 CONF_CLEANUP_DAYS: Final = "cleanup_days"
 CONF_SCAN_INTERVAL_HOURS: Final = "scan_interval_hours"
+CONF_DROP_OFF_LOCATION: Final = "drop_off_location"
 
 # Defaults
 DEFAULT_CLEANUP_DAYS: Final = 3
 DEFAULT_SCAN_INTERVAL_HOURS: Final = 2
+DEFAULT_DROP_OFF_LOCATION: Final = ""
 
 # Services
 SERVICE_ADD: Final = "add"
@@ -28,6 +30,7 @@ ATTR_ETA: Final = "eta"
 ATTR_LAST_API_UPDATE: Final = "last_api_update"
 ATTR_STATUS: Final = "status"
 ATTR_PREFERENCE_URL: Final = "preference_url"
+ATTR_DROP_OFF_LOCATION: Final = "drop_off_location"
 
 # Events
 EVENT_STATUS_CHANGED: Final = "parcel_tracker.status_changed"

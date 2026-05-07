@@ -7,7 +7,13 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from custom_components.parcel_tracker.const import CONF_API_KEY, DOMAIN
+from custom_components.parcel_tracker.const import (
+    CONF_API_KEY,
+    CONF_CLEANUP_DAYS,
+    CONF_DROP_OFF_LOCATION,
+    CONF_SCAN_INTERVAL_HOURS,
+    DOMAIN,
+)
 
 
 @pytest.mark.integration
@@ -97,3 +103,35 @@ async def test_user_flow_already_configured(hass: HomeAssistant) -> None:
 
     assert result["type"] == FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+@pytest.mark.integration
+async def test_options_flow(hass: HomeAssistant) -> None:
+    """Test the options flow includes drop-off location."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Parcel Tracker",
+        data={CONF_API_KEY: "test_key"},
+        unique_id=DOMAIN,
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "init"
+    assert CONF_DROP_OFF_LOCATION in result["data_schema"].schema
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_CLEANUP_DAYS: 5,
+            CONF_SCAN_INTERVAL_HOURS: 4,
+            CONF_DROP_OFF_LOCATION: "Behind the garage",
+        },
+    )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_DROP_OFF_LOCATION] == "Behind the garage"

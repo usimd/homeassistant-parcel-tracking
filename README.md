@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="icon.svg" alt="Parcel Tracker Icon" width="128" height="128">
-</p>
-
 # Home Assistant Parcel Tracking Integration
 
 Custom Home Assistant integration for household parcel tracking via Ship24 universal tracking API.
