@@ -10,8 +10,10 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import Ship24Api
 from .const import (
     CONF_CLEANUP_DAYS,
+    CONF_DROP_OFF_LOCATION,
     CONF_SCAN_INTERVAL_HOURS,
     DEFAULT_CLEANUP_DAYS,
+    DEFAULT_DROP_OFF_LOCATION,
     DEFAULT_SCAN_INTERVAL_HOURS,
     DOMAIN,
     EVENT_STATUS_CHANGED,
@@ -93,6 +95,10 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
                         parcel.carrier, ""
                     ).format(tracking_number=tn)
 
+                    drop_off = self.entry.options.get(
+                        CONF_DROP_OFF_LOCATION, DEFAULT_DROP_OFF_LOCATION
+                    )
+
                     self.hass.bus.async_fire(
                         EVENT_STATUS_CHANGED,
                         {
@@ -103,6 +109,7 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
                             "eta": parcel.eta,
                             "preference_url": preference_url,
                             "tracking_url": parcel.tracking_url or "",
+                            "drop_off_location": drop_off,
                         },
                     )
 

@@ -34,6 +34,7 @@ ATTR_DROP_OFF_LOCATION: Final = "drop_off_location"
 
 # Events
 EVENT_STATUS_CHANGED: Final = "parcel_tracker.status_changed"
+EVENT_PARCEL_ADDED: Final = "parcel_tracker.parcel_added"
 
 # Dispatcher signals
 SIGNAL_NEW_PARCEL: Final = f"{DOMAIN}_new_parcel"

@@ -18,8 +18,12 @@ from .const import (
     ATTR_REGISTERED_BY,
     ATTR_TRACKING_NUMBER,
     ATTR_TRACKING_URL,
+    CARRIER_PREFERENCE_URLS,
     CONF_API_KEY,
+    CONF_DROP_OFF_LOCATION,
+    DEFAULT_DROP_OFF_LOCATION,
     DOMAIN,
+    EVENT_PARCEL_ADDED,
     SERVICE_ADD,
     SERVICE_REMOVE,
     SIGNAL_NEW_PARCEL,
@@ -160,6 +164,25 @@ def _register_services(hass: HomeAssistant) -> None:
 
         # Signal sensor platform to create entity
         async_dispatcher_send(hass, SIGNAL_NEW_PARCEL, tracking_number)
+
+        # Fire event for automations (includes preference URL + drop-off location)
+        entry = next(iter(hass.data[DOMAIN].values())).entry
+        preference_url = CARRIER_PREFERENCE_URLS.get(carrier, "").format(
+            tracking_number=tracking_number
+        )
+        drop_off = entry.options.get(CONF_DROP_OFF_LOCATION, DEFAULT_DROP_OFF_LOCATION)
+
+        hass.bus.async_fire(
+            EVENT_PARCEL_ADDED,
+            {
+                "tracking_number": tracking_number,
+                "carrier": carrier,
+                "description": description or "",
+                "tracking_url": tracking_url or "",
+                "preference_url": preference_url,
+                "drop_off_location": drop_off,
+            },
+        )
 
         # Trigger a refresh to get initial status
         await coordinator.async_request_refresh()
