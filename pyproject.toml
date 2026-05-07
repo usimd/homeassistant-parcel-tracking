@@ -1,0 +1,42 @@
+[project]
+name = ""
+version = "0.0.1"
+dependencies = []
+requires-python = ">=3.13.2"
+
+[dependency-groups]
+dev = [
+    "homeassistant>=2025.10.0",
+    "pytest>=8",
+    "pytest-homeassistant-custom-component>=0.13.260",
+    "pre-commit>=4.3",
+    "ruff>=0.15.12",
+]
+
+[tool.ruff]
+line-length = 88
+lint.ignore = ["S101"]
+exclude = ["__pycache__", "build", "dist", ".venv", "venv"]
+
+[tool.ruff.format]
+quote-style = "double"
+skip-magic-trailing-comma = false
+line-ending = "lf"
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+]
+markers = [
+    "integration: Integration tests that require Home Assistant runtime",
+    "unit: Unit tests that don't require Home Assistant runtime",
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]

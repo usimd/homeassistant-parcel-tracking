@@ -1,14 +1,25 @@
+<p align="center">
+  <img src="icon.svg" alt="Parcel Tracker Icon" width="128" height="128">
+</p>
+
 # Home Assistant Parcel Tracking Integration
 
-Custom Home Assistant integration for household parcel tracking with automatic door opener support.
+Custom Home Assistant integration for household parcel tracking via Ship24 universal tracking API.
 
-## Problem
+## Features
 
-Multiple family members receive parcels from various carriers (DHL, DPD, Hermes, GLS, UPS, Amazon Logistics). When nobody is home, deliveries fail. We want to:
+- Track parcels across **1500+ carriers** (DHL, DPD, Hermes, GLS, UPS, FedEx, Amazon, etc.) with a single API key
+- Automatic carrier detection from tracking URLs
+- Periodic status polling with configurable interval
+- Deep links to carrier delivery preference pages (Abstellgenehmigung, etc.)
+- Status change events for automations (door opener, notifications)
+- Auto-cleanup of delivered parcels
 
-1. Track all household parcels in HA with their delivery status and ETA
-2. Automatically open the front door when the doorbell rings on a delivery day
-3. (Phase 2) Automatically set delivery preferences via carrier APIs (e.g. DHL Abstellgenehmigung)
+## Setup
+
+1. Get a free Ship24 API key (10 shipments/month) at https://dashboard.ship24.com
+2. Install as custom component in Home Assistant
+3. Add integration via UI → enter Ship24 API key
 
 ## Architecture
 
@@ -22,10 +33,13 @@ Share on phone --> HTTP Shortcuts app --> POST to HA webhook
 HA webhook automation --> calls parcel_tracker.add service
         |
         v
-Integration parses carrier + tracking number
+Integration parses carrier + tracking number from URL
         |
         v
-Polls 17track API periodically --> updates status + ETA
+Polls Ship24 API periodically --> updates status + ETA
+        |
+        v
+Status change --> fires event --> notification with preference deep link
         |
         v
 Delivery day: doorbell rings --> automation opens door
@@ -38,13 +52,16 @@ Status = delivered --> auto-cleanup after N days
 
 ```
 custom_components/parcel_tracker/
-├── __init__.py          # Integration setup, storage, service registration
-├── manifest.json        # Integration metadata, dependencies
+├── __init__.py          # Integration setup, service registration
+├── manifest.json        # Integration metadata
 ├── sensor.py            # One sensor entity per tracked parcel
-├── config_flow.py       # UI config flow (17track API key)
-├── const.py             # Constants, defaults
+├── config_flow.py       # UI config flow (Ship24 API key)
+├── const.py             # Constants, carrier URLs, status maps
 ├── coordinator.py       # DataUpdateCoordinator for API polling
-├── api.py               # 17track API client
+├── api.py               # Ship24 API client
+├── store.py             # Persistent storage
+├── url_parser.py        # Carrier auto-detection from URLs
+├── services.yaml        # Service definitions
 ├── strings.json         # UI strings
 └── translations/
     └── en.json
@@ -54,17 +71,17 @@ custom_components/parcel_tracker/
 
 Each tracked parcel becomes a sensor entity:
 
-- **Entity ID**: `sensor.parcel_{carrier}_{tracking_number_suffix}`
-- **State**: `registered` | `in_transit` | `out_for_delivery` | `delivered` | `expired` | `unknown`
+- **State**: `registered` | `in_transit` | `out_for_delivery` | `delivered` | `failed_attempt` | `exception` | `unknown`
 - **Attributes**:
-  - `carrier` — DHL, DPD, Hermes, GLS, UPS, Amazon, etc.
+  - `carrier` — DHL, DPD, Hermes, GLS, UPS, FedEx, Amazon, etc.
   - `tracking_number` — full tracking number
-  - `eta` — estimated delivery date (YYYY-MM-DD), updated from API
+  - `eta` — estimated delivery date
   - `registered_by` — which device/user shared the URL
   - `registered_at` — timestamp of registration
   - `last_api_update` — timestamp of last successful API poll
   - `tracking_url` — direct link to carrier tracking page
-  - `description` — optional user-provided label ("new keyboard", etc.)
+  - `preference_url` — deep link to carrier delivery preferences (Abstellgenehmigung, etc.)
+  - `description` — optional user-provided label
 
 ## Services
 
@@ -73,11 +90,11 @@ Each tracked parcel becomes a sensor entity:
 Register a new parcel for tracking.
 
 ```yaml
-# From tracking number + carrier
+# From tracking number
 action: parcel_tracker.add
 data:
   tracking_number: "1234567890123456"
-  carrier: "DHL"              # optional if auto-detectable
+  carrier: "DHL"              # optional — Ship24 auto-detects
   description: "New keyboard"  # optional
 
 # From tracking URL (carrier auto-detected)
@@ -101,7 +118,7 @@ data:
 
 ### `parcel_tracker.status_changed`
 
-Fired on every status transition. Useful for notifications and automations.
+Fired on every status transition.
 
 ```yaml
 event_data:
@@ -110,39 +127,79 @@ event_data:
   old_status: "in_transit"
   new_status: "out_for_delivery"
   eta: "2026-05-08"
+  preference_url: "https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html?piececode=1234567890123456"
+  tracking_url: "https://www.dhl.de/de/privatkunden/dhl-sendungsverfolgung.html?piececode=1234567890123456"
 ```
+
+## Delivery Preference Notifications
+
+Each sensor exposes a `preference_url` attribute with a deep link to the carrier's delivery options page. Use this in automations to send actionable notifications:
+
+```yaml
+automation:
+  - alias: "Notify parcel in transit with delivery preferences"
+    triggers:
+      - trigger: event
+        event_type: parcel_tracker.status_changed
+        event_data:
+          new_status: in_transit
+    actions:
+      - action: notify.mobile_app_your_phone
+        data:
+          title: "📦 Parcel on the way!"
+          message: "{{ trigger.event.data.carrier }} parcel is in transit"
+          data:
+            url: "{{ trigger.event.data.preference_url }}"
+            actions:
+              - action: URI
+                title: "Set delivery preferences"
+                uri: "{{ trigger.event.data.preference_url }}"
+```
+
+Supported carrier preference links:
+
+| Carrier | Preference Page |
+|---------|----------------|
+| DHL | Sendungsverfolgung → Empfangsoptionen |
+| DPD | Paketankündigung |
+| Hermes | Sendungsinformation |
+| GLS | FlexDeliveryService |
+| UPS | My Choice |
+| FedEx | Delivery Manager |
+| Amazon | Order History |
 
 ## Lifecycle Management
 
 | Phase | Trigger | Action |
 |-------|---------|--------|
-| Register | Webhook / service call | Create sensor entity, initial API poll |
-| Track | Polling interval (2-4h) | Update status + ETA from 17track API |
+| Register | Webhook / service call | Create sensor, call Ship24 track API |
+| Track | Polling interval (default 2h) | Update status + ETA via Ship24 |
 | React | Status transition | Fire event, update entity |
 | Cleanup | N days after `delivered` | Auto-remove entity (configurable, default: 3 days) |
 | Persist | HA restart | Restore from `.storage/parcel_tracker` |
 
 ## Tracking API
 
-**17track** (https://api.17track.net) — universal tracking aggregator.
+**Ship24** (https://api.ship24.com) — universal tracking aggregator.
 
-- Free tier: 100 queries/day (sufficient for household use)
-- Covers: DHL, DPD, Hermes, GLS, UPS, FedEx, Amazon Logistics, and 1500+ carriers
-- Returns: status, sub-status, location, timestamps, estimated delivery
-- API key required (free registration)
+- Free plan: 10 shipments/month (subsequent polls of existing shipments are unlimited)
+- Covers: DHL, DPD, Hermes, GLS, UPS, FedEx, Amazon, and 1500+ carriers worldwide
+- Returns: status milestones, courier detection, ETA, event history
+- API key: https://dashboard.ship24.com/integrations/api-keys
 
 ## URL Parsing (Carrier Auto-Detection)
 
-```python
-CARRIER_PATTERNS = {
-    "DHL":    (r"dhl\.de|nolp\.dhl\.de", r"[0-9]{12,20}"),
-    "DPD":    (r"dpd\.de|tracking\.dpd",  r"[0-9]{14}"),
-    "Hermes": (r"myhermes\.de|hermesworld", r"[0-9]{14,16}"),
-    "GLS":    (r"gls-group\.com|gls-pakete", r"[A-Z0-9]{11,14}"),
-    "UPS":    (r"ups\.com",               r"1Z[A-Z0-9]{16}"),
-    "Amazon": (r"amazon\.de/progress-tracker", r"[A-Z0-9]{12,}"),
-}
-```
+Supported URL patterns for auto-detecting carrier from shared tracking links:
+
+| Carrier | URL Pattern |
+|---------|-------------|
+| DHL | `dhl.de`, `nolp.dhl.de` |
+| DPD | `dpd.de`, `tracking.dpd` |
+| Hermes | `myhermes.de`, `hermesworld` |
+| GLS | `gls-group.com`, `gls-pakete` |
+| UPS | `ups.com` |
+| FedEx | `fedex.com` |
+| Amazon | `amazon.de/progress-tracker` |
 
 ## Webhook Integration
 
@@ -190,25 +247,14 @@ actions:
       entity_id: switch.doorbell_door_opener
 ```
 
-## Phase 2: DHL Abstellgenehmigung
+## Configuration Options
 
-Automatically set drop-off permission via DHL Paket DE API when a DHL parcel is registered:
+Via UI (Settings → Integrations → Parcel Tracker → Configure):
 
-- DHL Developer Portal: https://developer.dhl.com
-- API: Shipment Tracking + Delivery Preferences
-- Trigger: `parcel_tracker.status_changed` event with `carrier: DHL`
-- Action: REST call to set preferred drop-off location
-
-## Configuration
-
-```yaml
-# configuration.yaml (or via UI config flow)
-parcel_tracker:
-  api_key: !secret 17track_api_key
-  poll_interval: 180          # minutes between API polls (default: 180)
-  cleanup_days: 3             # days after delivery to remove entity (default: 3)
-  auto_detect_carrier: true   # attempt carrier detection from tracking number format
-```
+| Option | Default | Description |
+|--------|---------|-------------|
+| Cleanup days | 3 | Days after delivery before auto-removal (1-30) |
+| Scan interval | 2h | How often to poll Ship24 for updates (1-12h) |
 
 ## Development
 
@@ -217,12 +263,15 @@ parcel_tracker:
 ln -s /path/to/this/repo/custom_components/parcel_tracker \
       /path/to/ha-config/custom_components/parcel_tracker
 
-# Restart HA
-ha core restart
+# Run tests
+uv run pytest tests/ -v
+
+# Lint
+uv run ruff check . && uv run ruff format --check .
 ```
 
 ## Dependencies
 
 - Home Assistant 2024.1+
-- 17track API key (free tier: https://api.17track.net)
+- Ship24 API key (free plan: https://dashboard.ship24.com)
 - HTTP Shortcuts app on Android phones (for share sheet integration)

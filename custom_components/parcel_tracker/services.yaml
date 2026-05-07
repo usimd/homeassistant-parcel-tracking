@@ -1,0 +1,45 @@
+add:
+  name: Add Parcel
+  description: Register a new parcel for tracking
+  fields:
+    tracking_number:
+      name: Tracking Number
+      description: The carrier tracking number
+      required: false
+      selector:
+        text:
+    tracking_url:
+      name: Tracking URL
+      description: A tracking URL (carrier and tracking number will be auto-detected)
+      required: false
+      selector:
+        text:
+    carrier:
+      name: Carrier
+      description: The carrier name (e.g. DHL, DPD, Hermes). Auto-detected if URL is provided.
+      required: false
+      selector:
+        text:
+    description:
+      name: Description
+      description: Optional label for this parcel (e.g. "new keyboard")
+      required: false
+      selector:
+        text:
+    registered_by:
+      name: Registered By
+      description: Which device or user registered this parcel
+      required: false
+      selector:
+        text:
+
+remove:
+  name: Remove Parcel
+  description: Remove a parcel from tracking
+  fields:
+    tracking_number:
+      name: Tracking Number
+      description: The tracking number of the parcel to remove
+      required: true
+      selector:
+        text:

@@ -1,0 +1,6 @@
+{
+  "name": "Parcel Tracker",
+  "render_readme": true,
+  "filename": "parcel_tracker",
+  "homeassistant": "2024.1.0"
+}

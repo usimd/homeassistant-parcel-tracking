@@ -1,0 +1,42 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Parcel Tracker Setup",
+        "description": "Enter your Ship24 API key to enable universal parcel tracking across 1500+ carriers.\n\nGet a free key (10 shipments/month) at https://dashboard.ship24.com",
+        "data": {
+          "api_key": "Ship24 API Key"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to Ship24 API. Please check your API key."
+    },
+    "abort": {
+      "already_configured": "Parcel Tracker is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Parcel Tracker Options",
+        "description": "Configure tracking behavior",
+        "data": {
+          "cleanup_days": "Days after delivery before auto-removal",
+          "scan_interval_hours": "Polling interval (hours)"
+        },
+        "data_description": {
+          "cleanup_days": "Number of days after a parcel is delivered before it is automatically removed (1-30)",
+          "scan_interval_hours": "How often to poll Ship24 API for status updates (1-12 hours)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "parcel": {
+        "name": "Parcel {carrier} {suffix}"
+      }
+    }
+  }
+}
