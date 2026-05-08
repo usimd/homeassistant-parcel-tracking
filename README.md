@@ -230,9 +230,11 @@ POST https://<ha-external-url>/api/webhook/parcel_tracker_register
      > `{share_text}` is a **built-in variable** — the app replaces it automatically with whatever text is shared. Don't create a variable for it; just type it literally.
      >
      > Replace `my-pixel` with whatever name you want to identify this phone.
-4. **Trigger from Share Sheet**
-   - Go back to the shortcut settings → **Trigger & Execution Settings**
-   - Enable **Share into this shortcut** (or "Accept shared text")
+4. **Trigger from Share Sheet** ⚠️ *Without this, the shortcut won't appear when sharing!*
+   - Go back to the shortcut's main settings screen
+   - Tap **Trigger & Execution Settings** (⚡ icon)
+   - Enable **"Accept shared text from other apps"**
+   - You may need to restart HTTP Shortcuts (or reboot) for Android to register the new share target
 5. **Save** the shortcut (✓ top-right)
 
 **Usage:** Open a tracking link in your carrier's email/app → tap **Share** → pick **HTTP Shortcuts** → select **Track Parcel**. Done — the parcel appears in HA within seconds.
