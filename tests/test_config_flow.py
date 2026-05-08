@@ -10,7 +10,6 @@ from homeassistant.data_entry_flow import FlowResultType
 from custom_components.parcel_tracker.const import (
     CONF_API_KEY,
     CONF_CLEANUP_DAYS,
-    CONF_DROP_OFF_LOCATION,
     CONF_SCAN_INTERVAL_HOURS,
     DOMAIN,
 )
@@ -122,16 +121,15 @@ async def test_options_flow(hass: HomeAssistant) -> None:
 
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "init"
-    assert CONF_DROP_OFF_LOCATION in result["data_schema"].schema
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={
             CONF_CLEANUP_DAYS: 5,
             CONF_SCAN_INTERVAL_HOURS: 4,
-            CONF_DROP_OFF_LOCATION: "Behind the garage",
         },
     )
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_DROP_OFF_LOCATION] == "Behind the garage"
+    assert result["data"][CONF_CLEANUP_DAYS] == 5
+    assert result["data"][CONF_SCAN_INTERVAL_HOURS] == 4

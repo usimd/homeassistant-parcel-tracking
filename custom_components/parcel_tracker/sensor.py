@@ -13,7 +13,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     ATTR_CARRIER,
     ATTR_DESCRIPTION,
-    ATTR_DROP_OFF_LOCATION,
     ATTR_ETA,
     ATTR_LAST_API_UPDATE,
     ATTR_PREFERENCE_URL,
@@ -22,8 +21,6 @@ from .const import (
     ATTR_TRACKING_NUMBER,
     ATTR_TRACKING_URL,
     CARRIER_PREFERENCE_URLS,
-    CONF_DROP_OFF_LOCATION,
-    DEFAULT_DROP_OFF_LOCATION,
     DOMAIN,
     SIGNAL_NEW_PARCEL,
     SIGNAL_REMOVE_PARCEL,
@@ -151,12 +148,5 @@ class ParcelSensor(CoordinatorEntity[ParcelTrackerCoordinator], SensorEntity):
         )
         if pref_url:
             attrs[ATTR_PREFERENCE_URL] = pref_url
-
-        # Drop-off location from options
-        drop_off = self.coordinator.config_entry.options.get(
-            CONF_DROP_OFF_LOCATION, DEFAULT_DROP_OFF_LOCATION
-        )
-        if drop_off:
-            attrs[ATTR_DROP_OFF_LOCATION] = drop_off
 
         return attrs

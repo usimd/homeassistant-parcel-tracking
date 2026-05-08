@@ -17,10 +17,8 @@ from .api import Ship24Api
 from .const import (
     CONF_API_KEY,
     CONF_CLEANUP_DAYS,
-    CONF_DROP_OFF_LOCATION,
     CONF_SCAN_INTERVAL_HOURS,
     DEFAULT_CLEANUP_DAYS,
-    DEFAULT_DROP_OFF_LOCATION,
     DEFAULT_SCAN_INTERVAL_HOURS,
     DOMAIN,
 )
@@ -117,12 +115,6 @@ class ParcelTrackerOptionsFlow(config_entries.OptionsFlow):
                         mode=NumberSelectorMode.BOX,
                     )
                 ),
-                vol.Optional(
-                    CONF_DROP_OFF_LOCATION,
-                    default=self._config_entry.options.get(
-                        CONF_DROP_OFF_LOCATION, DEFAULT_DROP_OFF_LOCATION
-                    ),
-                ): str,
             }
         )
 
