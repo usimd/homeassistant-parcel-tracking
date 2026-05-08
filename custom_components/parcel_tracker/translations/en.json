@@ -33,6 +33,9 @@
           "scan_interval_hours": "How often to poll Ship24 API for status updates (1-12 hours)"
         }
       }
+    },
+    "error": {
+      "dhl_cannot_connect": "Cannot connect to DHL API. Please check your API key."
     }
   },
   "entity": {
