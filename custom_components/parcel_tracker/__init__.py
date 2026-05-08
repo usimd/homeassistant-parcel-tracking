@@ -68,6 +68,17 @@ SERVICE_REMOVE_SCHEMA = vol.Schema(
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Parcel Tracker from a config entry."""
+    # Register webhook early — must work even if the API is temporarily down
+    webhook.async_register(
+        hass,
+        DOMAIN,
+        "Parcel Tracker",
+        WEBHOOK_ID,
+        _handle_webhook,
+        allowed_methods=["POST"],
+        local_only=False,
+    )
+
     api = Ship24Api(hass, entry.data[CONF_API_KEY])
 
     # Verify connection
@@ -97,18 +108,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register services (only once)
     if not hass.services.has_service(DOMAIN, SERVICE_ADD):
         _register_services(hass)
-
-    # Register webhook for receiving shared tracking URLs
-    webhook.async_register(
-        hass,
-        DOMAIN,
-        "Parcel Tracker",
-        WEBHOOK_ID,
-        _handle_webhook,
-        allowed_methods=["POST"],
-        local_only=False,
-    )
-    _LOGGER.info("Registered webhook %s", WEBHOOK_ID)
 
     # Set up options flow listener
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
@@ -267,7 +266,11 @@ async def _handle_webhook(
     if not tracking_url:
         raise web.HTTPBadRequest(text="Missing 'url' or 'text' field")
 
-    coordinator = _get_coordinator(hass)
+    try:
+        coordinator = _get_coordinator(hass)
+    except ValueError:
+        raise web.HTTPServiceUnavailable(text="Integration not ready")
+
     success = await _add_parcel(
         hass,
         coordinator,
