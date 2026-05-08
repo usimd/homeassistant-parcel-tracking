@@ -66,9 +66,8 @@ SERVICE_REMOVE_SCHEMA = vol.Schema(
 )
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Parcel Tracker from a config entry."""
-    # Register webhook early — must work even if the API is temporarily down
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up the Parcel Tracker integration (platform-level)."""
     webhook.async_register(
         hass,
         DOMAIN,
@@ -78,7 +77,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         allowed_methods=["POST"],
         local_only=False,
     )
+    return True
 
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Parcel Tracker from a config entry."""
     api = Ship24Api(hass, entry.data[CONF_API_KEY])
 
     # Verify connection
@@ -291,11 +294,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
 
-        # Remove services and webhook if no more entries
+        # Remove services if no more entries
         if not hass.data[DOMAIN]:
             hass.services.async_remove(DOMAIN, SERVICE_ADD)
             hass.services.async_remove(DOMAIN, SERVICE_REMOVE)
-            webhook.async_unregister(hass, WEBHOOK_ID)
 
     return unload_ok
 
