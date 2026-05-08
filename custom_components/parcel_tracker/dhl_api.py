@@ -54,11 +54,15 @@ class DhlApi:
         try:
             resp = await self._session.get(
                 DHL_BASE_URL,
-                headers={"DHL-API-Key": self._api_key},
+                headers={
+                    "DHL-API-Key": self._api_key,
+                    "Accept": "application/json",
+                },
                 params={"trackingNumber": "0000000000"},
             )
-            # 404 = valid key, shipment not found; 401 = bad key
-            return resp.status in (200, 404)
+            _LOGGER.debug("DHL API test_connection status: %s", resp.status)
+            # 401/403 = bad key; anything else means the key is valid
+            return resp.status not in (401, 403)
         except Exception:
             _LOGGER.exception("Error testing DHL API connection")
             return False
@@ -68,7 +72,10 @@ class DhlApi:
         try:
             resp = await self._session.get(
                 DHL_BASE_URL,
-                headers={"DHL-API-Key": self._api_key},
+                headers={
+                    "DHL-API-Key": self._api_key,
+                    "Accept": "application/json",
+                },
                 params={"trackingNumber": tracking_number, "language": "en"},
             )
 
