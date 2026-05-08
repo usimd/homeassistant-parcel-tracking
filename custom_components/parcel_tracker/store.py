@@ -20,6 +20,7 @@ class ParcelData:
     carrier: str
     status: str = STATUS_REGISTERED
     eta: str | None = None
+    eta_timeframe: str | None = None
     description: str | None = None
     registered_by: str | None = None
     registered_at: str = field(default_factory=lambda: datetime.now().isoformat())

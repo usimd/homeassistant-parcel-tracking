@@ -14,6 +14,7 @@ from .const import (
     ATTR_CARRIER,
     ATTR_DESCRIPTION,
     ATTR_ETA,
+    ATTR_ETA_TIMEFRAME,
     ATTR_LAST_API_UPDATE,
     ATTR_PREFERENCE_URL,
     ATTR_REGISTERED_AT,
@@ -133,6 +134,8 @@ class ParcelSensor(CoordinatorEntity[ParcelTrackerCoordinator], SensorEntity):
         }
         if parcel.eta:
             attrs[ATTR_ETA] = parcel.eta
+        if parcel.eta_timeframe:
+            attrs[ATTR_ETA_TIMEFRAME] = parcel.eta_timeframe
         if parcel.registered_by:
             attrs[ATTR_REGISTERED_BY] = parcel.registered_by
         if parcel.last_api_update:

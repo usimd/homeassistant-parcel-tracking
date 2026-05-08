@@ -10,6 +10,7 @@ from homeassistant.data_entry_flow import FlowResultType
 from custom_components.parcel_tracker.const import (
     CONF_API_KEY,
     CONF_CLEANUP_DAYS,
+    CONF_DHL_API_KEY,
     CONF_SCAN_INTERVAL_HOURS,
     DOMAIN,
 )
@@ -133,3 +134,74 @@ async def test_options_flow(hass: HomeAssistant) -> None:
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_CLEANUP_DAYS] == 5
     assert result["data"][CONF_SCAN_INTERVAL_HOURS] == 4
+
+
+@pytest.mark.integration
+async def test_options_flow_with_dhl_key(hass: HomeAssistant) -> None:
+    """Test the options flow with a valid DHL API key."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Parcel Tracker",
+        data={CONF_API_KEY: "test_key"},
+        unique_id=DOMAIN,
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+    with patch(
+        "custom_components.parcel_tracker.config_flow.DhlApi"
+    ) as mock_dhl_cls:
+        mock_dhl = mock_dhl_cls.return_value
+        mock_dhl.test_connection = AsyncMock(return_value=True)
+
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_DHL_API_KEY: "valid_dhl_key",
+                CONF_CLEANUP_DAYS: 5,
+                CONF_SCAN_INTERVAL_HOURS: 4,
+            },
+        )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_DHL_API_KEY] == "valid_dhl_key"
+
+
+@pytest.mark.integration
+async def test_options_flow_invalid_dhl_key(hass: HomeAssistant) -> None:
+    """Test the options flow with an invalid DHL API key."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Parcel Tracker",
+        data={CONF_API_KEY: "test_key"},
+        unique_id=DOMAIN,
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    with patch(
+        "custom_components.parcel_tracker.config_flow.DhlApi"
+    ) as mock_dhl_cls:
+        mock_dhl = mock_dhl_cls.return_value
+        mock_dhl.test_connection = AsyncMock(return_value=False)
+
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_DHL_API_KEY: "bad_dhl_key",
+                CONF_CLEANUP_DAYS: 3,
+                CONF_SCAN_INTERVAL_HOURS: 2,
+            },
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"] == {CONF_DHL_API_KEY: "dhl_cannot_connect"}

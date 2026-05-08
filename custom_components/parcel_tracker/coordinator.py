@@ -10,6 +10,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import Ship24Api
 from .const import (
     CONF_CLEANUP_DAYS,
+    CONF_DHL_API_KEY,
     CONF_SCAN_INTERVAL_HOURS,
     DEFAULT_CLEANUP_DAYS,
     DEFAULT_SCAN_INTERVAL_HOURS,
@@ -17,6 +18,7 @@ from .const import (
     EVENT_STATUS_CHANGED,
     STATUS_DELIVERED,
 )
+from .dhl_api import DhlApi, is_dhl_parcel
 from .store import ParcelData, ParcelStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,6 +38,10 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
         self.api = api
         self.store = store
         self.entry = entry
+
+        # Optional DHL API for enrichment
+        dhl_key = entry.options.get(CONF_DHL_API_KEY, "")
+        self.dhl_api: DhlApi | None = DhlApi(hass, dhl_key) if dhl_key else None
 
         scan_interval_hours = entry.options.get(
             CONF_SCAN_INTERVAL_HOURS, DEFAULT_SCAN_INTERVAL_HOURS
@@ -106,6 +112,9 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
                         },
                     )
 
+            # Enrich DHL parcels with delivery time window
+            await self._enrich_dhl_parcels()
+
             # Auto-cleanup delivered parcels
             await self._cleanup_delivered_parcels()
 
@@ -116,6 +125,35 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
         except Exception as err:
             _LOGGER.error("Error fetching parcel tracking data: %s", err)
             raise UpdateFailed(f"Error communicating with Ship24 API: {err}") from err
+
+    async def _enrich_dhl_parcels(self) -> None:
+        """Enrich DHL parcels with delivery time window from DHL API."""
+        if not self.dhl_api:
+            return
+
+        for tn, parcel in list(self.store.parcels.items()):
+            if parcel.status == STATUS_DELIVERED:
+                continue
+            if not is_dhl_parcel(parcel.carrier):
+                continue
+            # Only call DHL if Ship24 didn't provide an ETA
+            if parcel.eta:
+                continue
+
+            dhl_info = await self.dhl_api.get_details(tn)
+            if dhl_info is None:
+                continue
+
+            if dhl_info.eta_date:
+                parcel.eta = dhl_info.eta_date
+            if dhl_info.eta_timeframe_from and dhl_info.eta_timeframe_to:
+                parcel.eta_timeframe = (
+                    f"{dhl_info.eta_timeframe_from} – {dhl_info.eta_timeframe_to}"
+                )
+            elif dhl_info.eta_timeframe_from or dhl_info.eta_timeframe_to:
+                parcel.eta_timeframe = (
+                    dhl_info.eta_timeframe_from or dhl_info.eta_timeframe_to
+                )
 
     async def _cleanup_delivered_parcels(self) -> None:
         """Remove parcels that have been delivered for more than N days."""

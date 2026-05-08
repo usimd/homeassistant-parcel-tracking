@@ -6,6 +6,7 @@ DOMAIN: Final = "parcel_tracker"
 
 # Configuration
 CONF_API_KEY: Final = "api_key"
+CONF_DHL_API_KEY: Final = "dhl_api_key"
 CONF_CLEANUP_DAYS: Final = "cleanup_days"
 CONF_SCAN_INTERVAL_HOURS: Final = "scan_interval_hours"
 
@@ -25,6 +26,7 @@ ATTR_DESCRIPTION: Final = "description"
 ATTR_REGISTERED_BY: Final = "registered_by"
 ATTR_REGISTERED_AT: Final = "registered_at"
 ATTR_ETA: Final = "eta"
+ATTR_ETA_TIMEFRAME: Final = "eta_timeframe"
 ATTR_LAST_API_UPDATE: Final = "last_api_update"
 ATTR_STATUS: Final = "status"
 ATTR_PREFERENCE_URL: Final = "preference_url"

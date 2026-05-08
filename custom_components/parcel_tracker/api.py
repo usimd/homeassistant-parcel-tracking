@@ -110,8 +110,9 @@ class Ship24Api:
                 courier_name = events[0].get("courierName")
 
             # Get ETA - prefer courier estimate, fall back to Ship24 estimate
-            eta = shipment.get("estimatedDeliveryDate")
-            courier_eta = shipment.get("courierEstimatedDeliveryDate")
+            delivery = shipment.get("delivery", {})
+            eta = delivery.get("estimatedDeliveryDate")
+            courier_eta = delivery.get("courierEstimatedDeliveryDate")
             if courier_eta:
                 eta = courier_eta.get("to") or courier_eta.get("from") or eta
 
@@ -170,8 +171,9 @@ class Ship24Api:
                 courier_name = events[0].get("courierName")
 
             # Get ETA - prefer courier estimate, fall back to Ship24 estimate
-            eta = shipment.get("estimatedDeliveryDate")
-            courier_eta = shipment.get("courierEstimatedDeliveryDate")
+            delivery = shipment.get("delivery", {})
+            eta = delivery.get("estimatedDeliveryDate")
+            courier_eta = delivery.get("courierEstimatedDeliveryDate")
             if courier_eta:
                 eta = courier_eta.get("to") or courier_eta.get("from") or eta
 

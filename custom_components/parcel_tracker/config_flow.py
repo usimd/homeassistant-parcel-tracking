@@ -17,11 +17,13 @@ from .api import Ship24Api
 from .const import (
     CONF_API_KEY,
     CONF_CLEANUP_DAYS,
+    CONF_DHL_API_KEY,
     CONF_SCAN_INTERVAL_HOURS,
     DEFAULT_CLEANUP_DAYS,
     DEFAULT_SCAN_INTERVAL_HOURS,
     DOMAIN,
 )
+from .dhl_api import DhlApi
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -84,11 +86,27 @@ class ParcelTrackerOptionsFlow(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle options step."""
+        errors = {}
+
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            # Validate DHL API key if provided
+            dhl_key = user_input.get(CONF_DHL_API_KEY, "")
+            if dhl_key:
+                dhl_api = DhlApi(self.hass, dhl_key)
+                if not await dhl_api.test_connection():
+                    errors[CONF_DHL_API_KEY] = "dhl_cannot_connect"
+
+            if not errors:
+                return self.async_create_entry(title="", data=user_input)
 
         data_schema = vol.Schema(
             {
+                vol.Optional(
+                    CONF_DHL_API_KEY,
+                    default=self._config_entry.options.get(
+                        CONF_DHL_API_KEY, ""
+                    ),
+                ): str,
                 vol.Optional(
                     CONF_CLEANUP_DAYS,
                     default=self._config_entry.options.get(
@@ -121,4 +139,5 @@ class ParcelTrackerOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=data_schema,
+            errors=errors,
         )
