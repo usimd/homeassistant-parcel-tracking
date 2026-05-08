@@ -97,16 +97,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not hass.services.has_service(DOMAIN, SERVICE_ADD):
         _register_services(hass)
 
-    # Register webhook (only once, idempotent)
-    webhook.async_register(
-        hass,
-        DOMAIN,
-        "Parcel Tracker",
-        WEBHOOK_ID,
-        _handle_webhook,
-        allowed_methods=["POST"],
-        local_only=False,
-    )
+    # Register webhook (skip if already registered from a previous setup)
+    if WEBHOOK_ID not in hass.data.get("webhook", {}):
+        webhook.async_register(
+            hass,
+            DOMAIN,
+            "Parcel Tracker",
+            WEBHOOK_ID,
+            _handle_webhook,
+            allowed_methods=["POST"],
+            local_only=False,
+        )
 
     # Set up options flow listener
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
@@ -300,5 +301,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload config entry."""
-    await hass.config_entries.async_reload(entry.entry_id)
     await hass.config_entries.async_reload(entry.entry_id)
