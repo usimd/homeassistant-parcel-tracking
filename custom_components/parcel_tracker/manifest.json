@@ -3,7 +3,7 @@
   "name": "Parcel Tracker",
   "codeowners": ["@usimd"],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": ["webhook"],
   "documentation": "https://github.com/usimd/homeassistant-parcel-tracking",
   "integration_type": "service",
   "iot_class": "cloud_polling",
