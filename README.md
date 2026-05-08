@@ -103,9 +103,11 @@ filter:
         secondary: >
           {{ state_attr(config.entity, 'tracking_number')[:12] }}…
           {% if state_attr(config.entity, 'eta') %} · ETA {{ state_attr(config.entity, 'eta') }}{% endif %}
-        tap_action:
-          action: url
-          url_path: "{{ state_attr(config.entity, 'tracking_url') }}"
+        tap_action: |
+          {
+            "action": "url",
+            "url_path": "{{ state_attr(config.entity, 'tracking_url') }}"
+          }
 sort:
   method: state
   reverse: true
@@ -127,6 +129,11 @@ entities:
     entity: sensor.parcel_dhl_3456
     state: "{{ state_attr('sensor.parcel_dhl_3456', 'carrier') }}: {{ states('sensor.parcel_dhl_3456') | replace('_', ' ') | title }}"
     secondary: "ETA: {{ state_attr('sensor.parcel_dhl_3456', 'eta') }}"
+    tap_action: |
+      {
+        "action": "url",
+        "url_path": "{{ state_attr(config.entity, 'tracking_url') }}"
+      }
 ```
 
 Or use the built-in entity filter card for a zero-config list:
