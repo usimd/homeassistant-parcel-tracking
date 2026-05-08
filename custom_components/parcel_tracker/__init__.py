@@ -67,11 +67,14 @@ SERVICE_REMOVE_SCHEMA = vol.Schema(
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Parcel Tracker from a config entry."""
+    _LOGGER.debug("async_setup_entry starting for %s", entry.entry_id)
+
     api = Ship24Api(hass, entry.data[CONF_API_KEY])
 
     # Load persistent parcel store
     store = ParcelStore(hass)
     await store.async_load()
+    _LOGGER.debug("Store loaded, %d parcels", len(store.parcels))
 
     # Create coordinator
     coordinator = ParcelTrackerCoordinator(hass, api, store, entry)
@@ -96,8 +99,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register services (only once)
     if not hass.services.has_service(DOMAIN, SERVICE_ADD):
         _register_services(hass)
+        _LOGGER.debug("Services registered")
 
     # Register webhook (skip if already registered from a previous setup)
+    _LOGGER.debug(
+        "Webhook check: existing=%s", list(hass.data.get("webhook", {}).keys())
+    )
     if WEBHOOK_ID not in hass.data.get("webhook", {}):
         webhook.async_register(
             hass,
@@ -108,10 +115,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             allowed_methods=["POST"],
             local_only=False,
         )
+        _LOGGER.debug("Webhook %s registered", WEBHOOK_ID)
+    else:
+        _LOGGER.debug("Webhook %s already registered, skipping", WEBHOOK_ID)
 
     # Set up options flow listener
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
+    _LOGGER.debug("async_setup_entry complete")
     return True
 
 
