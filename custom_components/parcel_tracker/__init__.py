@@ -108,6 +108,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         allowed_methods=["POST"],
         local_only=False,
     )
+    _LOGGER.info("Registered webhook %s", WEBHOOK_ID)
 
     # Set up options flow listener
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
