@@ -41,7 +41,7 @@ async def test_setup_entry(hass: HomeAssistant) -> None:
 
 @pytest.mark.integration
 async def test_setup_entry_connection_fails(hass: HomeAssistant) -> None:
-    """Test setup fails when Ship24 API is unreachable."""
+    """Test setup succeeds even when Ship24 API is unreachable (uses cached data)."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Parcel Tracker",
@@ -50,15 +50,23 @@ async def test_setup_entry_connection_fails(hass: HomeAssistant) -> None:
     )
     entry.add_to_hass(hass)
 
-    with patch("custom_components.parcel_tracker.Ship24Api") as mock_api_cls:
+    with (
+        patch("custom_components.parcel_tracker.Ship24Api") as mock_api_cls,
+        patch("custom_components.parcel_tracker.ParcelStore") as mock_store_cls,
+    ):
         mock_api = mock_api_cls.return_value
         mock_api.test_connection = AsyncMock(return_value=False)
+
+        mock_store = mock_store_cls.return_value
+        mock_store.async_load = AsyncMock()
+        mock_store.parcels = {}
+        mock_store.get_all_tracking_numbers = lambda: []
 
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-    # Entry should not be loaded
-    assert entry.entry_id not in hass.data.get(DOMAIN, {})
+    # Entry should still be loaded — coordinator handles retries
+    assert entry.entry_id in hass.data.get(DOMAIN, {})
 
 
 @pytest.mark.integration

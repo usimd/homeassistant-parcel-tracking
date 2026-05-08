@@ -8,7 +8,6 @@ from homeassistant.components import webhook
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers import entity_registry as er
 
@@ -66,27 +65,9 @@ SERVICE_REMOVE_SCHEMA = vol.Schema(
 )
 
 
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up the Parcel Tracker integration (platform-level)."""
-    webhook.async_register(
-        hass,
-        DOMAIN,
-        "Parcel Tracker",
-        WEBHOOK_ID,
-        _handle_webhook,
-        allowed_methods=["POST"],
-        local_only=False,
-    )
-    return True
-
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Parcel Tracker from a config entry."""
     api = Ship24Api(hass, entry.data[CONF_API_KEY])
-
-    # Verify connection
-    if not await api.test_connection():
-        raise ConfigEntryNotReady("Cannot connect to Ship24 API")
 
     # Load persistent parcel store
     store = ParcelStore(hass)
@@ -95,9 +76,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Create coordinator
     coordinator = ParcelTrackerCoordinator(hass, api, store, entry)
 
-    # Initial data fetch (don't fail if no parcels yet)
+    # Initial data fetch — coordinator handles API errors via its retry mechanism
     if store.get_all_tracking_numbers():
-        await coordinator.async_config_entry_first_refresh()
+        try:
+            await coordinator.async_config_entry_first_refresh()
+        except Exception:
+            _LOGGER.warning("Initial API fetch failed; will retry on next interval")
+            coordinator.data = store.parcels
     else:
         coordinator.data = store.parcels
 
@@ -111,6 +96,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register services (only once)
     if not hass.services.has_service(DOMAIN, SERVICE_ADD):
         _register_services(hass)
+
+    # Register webhook (only once, idempotent)
+    webhook.async_register(
+        hass,
+        DOMAIN,
+        "Parcel Tracker",
+        WEBHOOK_ID,
+        _handle_webhook,
+        allowed_methods=["POST"],
+        local_only=False,
+    )
 
     # Set up options flow listener
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
