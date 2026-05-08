@@ -4,6 +4,7 @@ import logging
 
 import voluptuous as vol
 
+from homeassistant.components import webhook
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -26,6 +27,7 @@ from .const import (
     SERVICE_REMOVE,
     SIGNAL_NEW_PARCEL,
     SIGNAL_REMOVE_PARCEL,
+    WEBHOOK_ID,
 )
 from .coordinator import ParcelTrackerCoordinator
 from .store import ParcelData, ParcelStore
@@ -96,6 +98,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not hass.services.has_service(DOMAIN, SERVICE_ADD):
         _register_services(hass)
 
+    # Register webhook for receiving shared tracking URLs
+    webhook.async_register(
+        hass,
+        DOMAIN,
+        "Parcel Tracker",
+        WEBHOOK_ID,
+        _handle_webhook,
+        allowed_methods=["POST"],
+        local_only=False,
+    )
+
     # Set up options flow listener
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
@@ -116,76 +129,14 @@ def _register_services(hass: HomeAssistant) -> None:
     async def handle_add(call: ServiceCall) -> None:
         """Handle the add parcel service call."""
         coordinator = _get_coordinator(hass)
-
-        tracking_number = call.data.get(ATTR_TRACKING_NUMBER)
-        tracking_url = call.data.get(ATTR_TRACKING_URL)
-        carrier = call.data.get(ATTR_CARRIER)
-        description = call.data.get(ATTR_DESCRIPTION)
-        registered_by = call.data.get(ATTR_REGISTERED_BY)
-
-        # Parse tracking URL if provided
-        if tracking_url and not tracking_number:
-            parsed_carrier, parsed_number = parse_tracking_url(tracking_url)
-            if parsed_number:
-                tracking_number = parsed_number
-                if not carrier and parsed_carrier:
-                    carrier = parsed_carrier
-            else:
-                _LOGGER.error("Could not parse tracking URL: %s", tracking_url)
-                return
-
-        if not tracking_number:
-            _LOGGER.error("No tracking number provided or parseable from URL")
-            return
-
-        # Check for duplicate
-        if coordinator.store.get(tracking_number):
-            _LOGGER.warning("Parcel %s is already being tracked", tracking_number)
-            return
-
-        carrier = carrier or "Unknown"
-
-        # Build tracking URL if not provided
-        if not tracking_url:
-            tracking_url = build_tracking_url(carrier, tracking_number)
-
-        # Create and store parcel data
-        parcel = ParcelData(
-            tracking_number=tracking_number,
-            carrier=carrier,
-            description=description,
-            registered_by=registered_by,
-            tracking_url=tracking_url,
-        )
-        coordinator.store.add(parcel)
-        await coordinator.store.async_save()
-
-        # Signal sensor platform to create entity
-        async_dispatcher_send(hass, SIGNAL_NEW_PARCEL, tracking_number)
-
-        # Fire event for automations (includes preference URL)
-        preference_url = CARRIER_PREFERENCE_URLS.get(carrier, "").format(
-            tracking_number=tracking_number
-        )
-
-        hass.bus.async_fire(
-            EVENT_PARCEL_ADDED,
-            {
-                "tracking_number": tracking_number,
-                "carrier": carrier,
-                "description": description or "",
-                "tracking_url": tracking_url or "",
-                "preference_url": preference_url,
-            },
-        )
-
-        # Trigger a refresh to get initial status
-        await coordinator.async_request_refresh()
-
-        _LOGGER.info(
-            "Registered parcel %s (%s) for tracking",
-            tracking_number,
-            carrier,
+        await _add_parcel(
+            hass,
+            coordinator,
+            tracking_number=call.data.get(ATTR_TRACKING_NUMBER),
+            tracking_url=call.data.get(ATTR_TRACKING_URL),
+            carrier=call.data.get(ATTR_CARRIER),
+            description=call.data.get(ATTR_DESCRIPTION),
+            registered_by=call.data.get(ATTR_REGISTERED_BY),
         )
 
     async def handle_remove(call: ServiceCall) -> None:
@@ -224,6 +175,111 @@ def _register_services(hass: HomeAssistant) -> None:
     )
 
 
+async def _add_parcel(
+    hass: HomeAssistant,
+    coordinator: ParcelTrackerCoordinator,
+    *,
+    tracking_number: str | None = None,
+    tracking_url: str | None = None,
+    carrier: str | None = None,
+    description: str | None = None,
+    registered_by: str | None = None,
+) -> bool:
+    """Add a parcel for tracking. Returns True if successful."""
+    # Parse tracking URL if provided
+    if tracking_url and not tracking_number:
+        parsed_carrier, parsed_number = parse_tracking_url(tracking_url)
+        if parsed_number:
+            tracking_number = parsed_number
+            if not carrier and parsed_carrier:
+                carrier = parsed_carrier
+        else:
+            _LOGGER.error("Could not parse tracking URL: %s", tracking_url)
+            return False
+
+    if not tracking_number:
+        _LOGGER.error("No tracking number provided or parseable from URL")
+        return False
+
+    # Check for duplicate
+    if coordinator.store.get(tracking_number):
+        _LOGGER.warning("Parcel %s is already being tracked", tracking_number)
+        return False
+
+    carrier = carrier or "Unknown"
+
+    # Build tracking URL if not provided
+    if not tracking_url:
+        tracking_url = build_tracking_url(carrier, tracking_number)
+
+    # Create and store parcel data
+    parcel = ParcelData(
+        tracking_number=tracking_number,
+        carrier=carrier,
+        description=description,
+        registered_by=registered_by,
+        tracking_url=tracking_url,
+    )
+    coordinator.store.add(parcel)
+    await coordinator.store.async_save()
+
+    # Signal sensor platform to create entity
+    async_dispatcher_send(hass, SIGNAL_NEW_PARCEL, tracking_number)
+
+    # Fire event for automations
+    preference_url = CARRIER_PREFERENCE_URLS.get(carrier, "").format(
+        tracking_number=tracking_number
+    )
+    hass.bus.async_fire(
+        EVENT_PARCEL_ADDED,
+        {
+            "tracking_number": tracking_number,
+            "carrier": carrier,
+            "description": description or "",
+            "tracking_url": tracking_url or "",
+            "preference_url": preference_url,
+        },
+    )
+
+    # Trigger a refresh to get initial status
+    await coordinator.async_request_refresh()
+
+    _LOGGER.info("Registered parcel %s (%s) for tracking", tracking_number, carrier)
+    return True
+
+
+async def _handle_webhook(
+    hass: HomeAssistant, webhook_id: str, request
+) -> None:
+    """Handle incoming webhook with a shared tracking URL."""
+    from aiohttp import web
+
+    try:
+        data = await request.json()
+    except (ValueError, KeyError):
+        raise web.HTTPBadRequest(text="Invalid JSON")
+
+    tracking_url = data.get("url") or data.get("text") or ""
+    registered_by = data.get("device") or "webhook"
+    description = data.get("description")
+
+    if not tracking_url:
+        raise web.HTTPBadRequest(text="Missing 'url' or 'text' field")
+
+    coordinator = _get_coordinator(hass)
+    success = await _add_parcel(
+        hass,
+        coordinator,
+        tracking_url=tracking_url,
+        description=description,
+        registered_by=registered_by,
+    )
+
+    if success:
+        return web.json_response({"status": "ok"})
+    raise web.HTTPUnprocessableEntity(text="Could not register parcel")
+
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
@@ -231,10 +287,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
 
-        # Remove services if no more entries
+        # Remove services and webhook if no more entries
         if not hass.data[DOMAIN]:
             hass.services.async_remove(DOMAIN, SERVICE_ADD)
             hass.services.async_remove(DOMAIN, SERVICE_REMOVE)
+            webhook.async_unregister(hass, WEBHOOK_ID)
 
     return unload_ok
 

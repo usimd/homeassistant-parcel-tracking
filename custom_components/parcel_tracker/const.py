@@ -41,6 +41,9 @@ SIGNAL_REMOVE_PARCEL: Final = f"{DOMAIN}_remove_parcel"
 STORAGE_KEY: Final = DOMAIN
 STORAGE_VERSION: Final = 1
 
+# Webhook
+WEBHOOK_ID: Final = "parcel_tracker_register"
+
 # Parcel statuses
 STATUS_REGISTERED: Final = "registered"
 STATUS_IN_TRANSIT: Final = "in_transit"

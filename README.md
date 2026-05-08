@@ -200,28 +200,23 @@ automation:
 </details>
 
 <details>
-<summary><b>Webhook: register parcel from shared URL</b></summary>
+<summary><b>Share tracking links from your phone</b></summary>
 
-Receive shared tracking URLs from the Android HTTP Shortcuts app:
+The integration registers a webhook automatically — no HA automation needed. Just point your phone's share shortcut at:
 
-```yaml
-alias: Register Parcel from Shared URL
-triggers:
-  - trigger: webhook
-    webhook_id: register_parcel
-    allowed_methods: [POST]
-    local_only: false
-actions:
-  - action: parcel_tracker.add
-    data:
-      tracking_url: "{{ trigger.data.url | default(trigger.data.text, '') }}"
-      registered_by: "{{ trigger.data.device | default('unknown') }}"
+```
+POST https://<ha-external-url>/api/webhook/parcel_tracker_register
 ```
 
-Android share sheet integration via **HTTP Shortcuts** app (F-Droid / Play Store):
+**JSON body:**
+```json
+{"url": "<tracking-url>", "device": "<phone-name>"}
+```
+
+**Android setup** via [HTTP Shortcuts](https://github.com/Waboodoo/HTTP-Shortcuts) app (F-Droid / Play Store):
 - Name: "Track Parcel"
 - Method: POST
-- URL: `https://<ha-external-url>/api/webhook/register_parcel`
+- URL: `https://<ha-external-url>/api/webhook/parcel_tracker_register`
 - Body: `{"url": "{share_text}", "device": "<phone-name>"}`
 
 </details>
