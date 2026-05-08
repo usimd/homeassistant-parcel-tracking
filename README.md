@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/test.yaml/badge.svg)](https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/test.yaml)
 [![codecov](https://codecov.io/gh/usimd/homeassistant-parcel-tracking/graph/badge.svg)](https://codecov.io/gh/usimd/homeassistant-parcel-tracking)
-[![License: MIT](https://img.shields.io/github/license/usimd/homeassistant-parcel-tracking)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/github/license/usimd/homeassistant-parcel-tracking)](LICENSE)
 [![HACS](https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/hacs.yaml/badge.svg)](https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/hacs.yaml)
 
 Custom Home Assistant integration for household parcel tracking via Ship24 universal tracking API.
