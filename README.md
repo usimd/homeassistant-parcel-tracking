@@ -213,11 +213,31 @@ POST https://<ha-external-url>/api/webhook/parcel_tracker_register
 {"url": "<tracking-url>", "device": "<phone-name>"}
 ```
 
-**Android setup** via [HTTP Shortcuts](https://github.com/Waboodoo/HTTP-Shortcuts) app (F-Droid / Play Store):
-- Name: "Track Parcel"
-- Method: POST
-- URL: `https://<ha-external-url>/api/webhook/parcel_tracker_register`
-- Body: `{"url": "{share_text}", "device": "<phone-name>"}`
+**Android step-by-step** using [HTTP Shortcuts](https://github.com/Waboodoo/HTTP-Shortcuts) (F-Droid / Play Store):
+
+1. Open the app → tap **+** (bottom-right) → **Regular Shortcut**
+2. **Basic Request Settings**
+   - Name: `Track Parcel`
+   - Method: **POST**
+   - URL: `https://<your-ha-url>/api/webhook/parcel_tracker_register`
+3. **Request Body / Payload**
+   - Tap **Request Body** → select **Custom Text**
+   - Content Type: `application/json`
+   - In the body text field, enter:
+     ```
+     {"url": "{share_text}", "device": "my-pixel"}
+     ```
+     > `{share_text}` is a **built-in variable** — the app replaces it automatically with whatever text is shared. Don't create a variable for it; just type it literally.
+     >
+     > Replace `my-pixel` with whatever name you want to identify this phone.
+4. **Trigger from Share Sheet**
+   - Go back to the shortcut settings → **Trigger & Execution Settings**
+   - Enable **Share into this shortcut** (or "Accept shared text")
+5. **Save** the shortcut (✓ top-right)
+
+**Usage:** Open a tracking link in your carrier's email/app → tap **Share** → pick **HTTP Shortcuts** → select **Track Parcel**. Done — the parcel appears in HA within seconds.
+
+**iOS** — use the built-in Shortcuts app with a "Get Contents of URL" action (POST, same JSON body). Add the shortcut to your Share Sheet.
 
 </details>
 
