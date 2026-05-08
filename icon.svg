@@ -10,10 +10,9 @@
   <!-- Top face -->
   <path d="M100 180 L256 100 L412 180 L256 260 Z" fill="#EDBA8A"/>
   
-  <!-- Tape on top face (spanning full width to opposite edge) -->
-  <path d="M176 219 L192 227 L348 147 L332 139 Z" fill="#F5E6A3" opacity="0.7"/>
-  <!-- Tape wrapping down left face -->
-  <path d="M176 219 L192 227 L192 347 L176 339 Z" fill="#F5E6A3" opacity="0.5"/>
+  <!-- Tape over top (middle) and down left face only -->
+  <path d="M236 108 L276 108 L320 130 L256 160 L192 130 Z" fill="#F5E6A3" opacity="0.7"/>
+  <path d="M176 188 L192 180 L192 360 L176 352 Z" fill="#F5E6A3" opacity="0.5"/>
 
   <!-- HA logo on right face — moved down to center vertically -->
   <g transform="translate(278, 265) scale(0.52) skewY(-28)">

@@ -1,11 +1,19 @@
-# Home Assistant Parcel Tracking Integration
+<p align="center">
+  <img src="icon.png" alt="Parcel Tracker" width="128">
+</p>
 
-[![Tests](https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/test.yaml/badge.svg)](https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/test.yaml)
-[![codecov](https://codecov.io/gh/usimd/homeassistant-parcel-tracking/graph/badge.svg)](https://codecov.io/gh/usimd/homeassistant-parcel-tracking)
-[![License: Apache 2.0](https://img.shields.io/github/license/usimd/homeassistant-parcel-tracking)](LICENSE)
-[![HACS](https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/hacs.yaml/badge.svg)](https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/hacs.yaml)
+<h1 align="center">Home Assistant Parcel Tracking</h1>
 
-Custom Home Assistant integration for household parcel tracking via Ship24 universal tracking API.
+<p align="center">
+  <a href="https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/test.yaml"><img src="https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/test.yaml/badge.svg" alt="Tests"></a>
+  <a href="https://codecov.io/gh/usimd/homeassistant-parcel-tracking"><img src="https://codecov.io/gh/usimd/homeassistant-parcel-tracking/graph/badge.svg" alt="codecov"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/usimd/homeassistant-parcel-tracking" alt="License: Apache 2.0"></a>
+  <a href="https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/hacs.yaml"><img src="https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/hacs.yaml/badge.svg" alt="HACS"></a>
+</p>
+
+<p align="center">
+  Custom Home Assistant integration for household parcel tracking via Ship24 universal tracking API.
+</p>
 
 ## Features
 
@@ -70,6 +78,71 @@ event_data:
   preference_url: "https://www.dhl.de/..."
   tracking_url: "https://www.dhl.de/..."
 ```
+
+## Dashboard
+
+The integration creates one sensor entity per tracked parcel. You can view them via **Settings → Devices & Services → Parcel Tracker** or build a Lovelace dashboard card:
+
+<details>
+<summary><b>Auto-entities card (shows all active parcels)</b></summary>
+
+Requires [auto-entities](https://github.com/thomasloven/lovelace-auto-entities) from HACS:
+
+```yaml
+type: custom:auto-entities
+card:
+  type: entities
+  title: 📦 Parcels
+  show_header_toggle: false
+filter:
+  include:
+    - entity_id: sensor.parcel_*
+      options:
+        type: custom:template-entity-row
+        state: "{{ state_attr(config.entity, 'carrier') }}: {{ states(config.entity) | replace('_', ' ') | title }}"
+        secondary: >
+          {{ state_attr(config.entity, 'tracking_number')[:12] }}…
+          {% if state_attr(config.entity, 'eta') %} · ETA {{ state_attr(config.entity, 'eta') }}{% endif %}
+        tap_action:
+          action: url
+          url_path: "{{ state_attr(config.entity, 'tracking_url') }}"
+sort:
+  method: state
+  reverse: true
+show_empty: false
+```
+
+</details>
+
+<details>
+<summary><b>Simple entities card (no extra dependencies)</b></summary>
+
+Manually list your parcel sensors (they appear/disappear as parcels are added/removed):
+
+```yaml
+type: entities
+title: 📦 Parcels
+entities:
+  - type: custom:template-entity-row
+    entity: sensor.parcel_dhl_3456
+    state: "{{ state_attr('sensor.parcel_dhl_3456', 'carrier') }}: {{ states('sensor.parcel_dhl_3456') | replace('_', ' ') | title }}"
+    secondary: "ETA: {{ state_attr('sensor.parcel_dhl_3456', 'eta') }}"
+```
+
+Or use the built-in entity filter card for a zero-config list:
+
+```yaml
+type: entity-filter
+entities:
+  - sensor.parcel_dhl_3456
+  - sensor.parcel_dpd_7890
+state_filter:
+  - registered
+  - in_transit
+  - out_for_delivery
+```
+
+</details>
 
 ## Example Automations
 
