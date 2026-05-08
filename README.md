@@ -230,14 +230,31 @@ POST https://<ha-external-url>/api/webhook/parcel_tracker_register
      > `{share_text}` is a **built-in variable** — the app replaces it automatically with whatever text is shared. Don't create a variable for it; just type it literally.
      >
      > Replace `my-pixel` with whatever name you want to identify this phone.
-4. **Trigger from Share Sheet** ⚠️ *Without this, the shortcut won't appear when sharing!*
+4. **Trigger from Share Sheet** (Android 11+)
    - Go back to the shortcut's main settings screen
    - Tap **Trigger & Execution Settings** (⚡ icon)
    - Enable **"Accept shared text from other apps"**
    - You may need to restart HTTP Shortcuts (or reboot) for Android to register the new share target
 5. **Save** the shortcut (✓ top-right)
 
-**Usage:** Open a tracking link in your carrier's email/app → tap **Share** → pick **HTTP Shortcuts** → select **Track Parcel**. Done — the parcel appears in HA within seconds.
+**Usage (Android 11+):** Share a tracking link → pick **HTTP Shortcuts** → select **Track Parcel**.
+
+<details>
+<summary><b>Alternative: older Android / home-screen shortcut (no share sheet)</b></summary>
+
+If your device doesn't support the share-into feature (Android < 11), use a dialog variable instead:
+
+1. In HTTP Shortcuts, open **Variables** (drawer menu) → **+** → **Text Input**
+   - Variable key: `tracking_url`
+   - Title: `Tracking URL`
+2. Create the shortcut as above, but use this body:
+   ```
+   {"url": "{tracking_url}", "device": "my-phone"}
+   ```
+3. **Place the shortcut on your home screen** (long-press shortcut → "Place on home screen" / use the widget picker)
+4. To use: copy the tracking link → tap the home-screen shortcut → paste → confirm
+
+</details>
 
 **iOS** — use the built-in Shortcuts app with a "Get Contents of URL" action (POST, same JSON body). Add the shortcut to your Share Sheet.
 
