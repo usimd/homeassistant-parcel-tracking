@@ -14,7 +14,7 @@ class TestParcelData:
         parcel = ParcelData(tracking_number="123", carrier="DHL")
         assert parcel.tracking_number == "123"
         assert parcel.carrier == "DHL"
-        assert parcel.status == "unknown"
+        assert parcel.status == "registered"
         assert parcel.eta is None
         assert parcel.description is None
 

@@ -79,7 +79,7 @@ class Ship24Api:
                 json={"trackingNumber": tracking_number},
             )
 
-            if resp.status != 200:
+            if resp.status not in (200, 201):
                 _LOGGER.debug(
                     "Ship24 API returned status %s for %s",
                     resp.status,
@@ -88,6 +88,7 @@ class Ship24Api:
                 return None
 
             data = await resp.json()
+            _LOGGER.debug("Ship24 track response for %s: %s", tracking_number, data)
             trackings = data.get("data", {}).get("trackings", [])
             if not trackings:
                 return None
@@ -146,6 +147,7 @@ class Ship24Api:
                 return None
 
             data = await resp.json()
+            _LOGGER.debug("Ship24 get_results response for %s: %s", tracker_id, data)
             trackings = data.get("data", {}).get("trackings", [])
             if not trackings:
                 return None

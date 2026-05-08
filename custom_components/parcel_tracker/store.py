@@ -7,7 +7,7 @@ from datetime import datetime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .const import STORAGE_KEY, STORAGE_VERSION, STATUS_UNKNOWN
+from .const import STORAGE_KEY, STORAGE_VERSION, STATUS_REGISTERED
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class ParcelData:
 
     tracking_number: str
     carrier: str
-    status: str = STATUS_UNKNOWN
+    status: str = STATUS_REGISTERED
     eta: str | None = None
     description: str | None = None
     registered_by: str | None = None

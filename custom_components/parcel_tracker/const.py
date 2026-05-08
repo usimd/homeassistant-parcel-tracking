@@ -55,7 +55,7 @@ STATUS_UNKNOWN: Final = "unknown"
 
 # Ship24 statusMilestone mapping
 SHIP24_STATUS_MAP: Final = {
-    "pending": STATUS_UNKNOWN,
+    "pending": STATUS_REGISTERED,
     "info_received": STATUS_REGISTERED,
     "in_transit": STATUS_IN_TRANSIT,
     "out_for_delivery": STATUS_OUT_FOR_DELIVERY,
