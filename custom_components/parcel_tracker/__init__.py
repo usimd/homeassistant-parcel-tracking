@@ -155,28 +155,9 @@ def _register_services(hass: HomeAssistant) -> None:
         coordinator = _get_coordinator(hass)
         tracking_number = call.data[ATTR_TRACKING_NUMBER]
 
-        parcel = coordinator.store.remove(tracking_number)
-        if not parcel:
+        if not await coordinator.async_remove_parcel(tracking_number):
             _LOGGER.warning("Parcel %s not found", tracking_number)
             return
-
-        # Save store
-        await coordinator.store.async_save()
-
-        # Remove entity from registry
-        entity_registry = er.async_get(hass)
-        for entry_id in hass.data.get(DOMAIN, {}):
-            unique_id = f"{entry_id}_{tracking_number}"
-            entity_id = entity_registry.async_get_entity_id(
-                Platform.SENSOR, DOMAIN, unique_id
-            )
-            if entity_id:
-                entity_registry.async_remove(entity_id)
-
-        # Signal removal
-        async_dispatcher_send(hass, SIGNAL_REMOVE_PARCEL, tracking_number)
-
-        _LOGGER.info("Removed parcel %s from tracking", tracking_number)
 
     hass.services.async_register(
         DOMAIN, SERVICE_ADD, handle_add, schema=SERVICE_ADD_SCHEMA

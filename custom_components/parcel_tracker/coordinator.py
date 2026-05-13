@@ -4,7 +4,10 @@ from datetime import datetime, timedelta
 import logging
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import Ship24Api
@@ -16,6 +19,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL_HOURS,
     DOMAIN,
     EVENT_STATUS_CHANGED,
+    SIGNAL_REMOVE_PARCEL,
     STATUS_DELIVERED,
 )
 from .dhl_api import DhlApi, is_dhl_parcel
@@ -173,4 +177,29 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
                 tn,
                 cleanup_days,
             )
-            self.store.remove(tn)
+            await self.async_remove_parcel(tn, save=False)
+
+    async def async_remove_parcel(
+        self, tracking_number: str, *, save: bool = True
+    ) -> bool:
+        """Remove a tracked parcel and delete the associated entity."""
+        parcel = self.store.remove(tracking_number)
+        if parcel is None:
+            return False
+
+        entity_registry = er.async_get(self.hass)
+        for entry_id in self.hass.data.get(DOMAIN, {}):
+            unique_id = f"{entry_id}_{tracking_number}"
+            entity_id = entity_registry.async_get_entity_id(
+                Platform.SENSOR, DOMAIN, unique_id
+            )
+            if entity_id:
+                entity_registry.async_remove(entity_id)
+
+        async_dispatcher_send(self.hass, SIGNAL_REMOVE_PARCEL, tracking_number)
+
+        if save:
+            await self.store.async_save()
+
+        _LOGGER.info("Removed parcel %s from tracking", tracking_number)
+        return True
