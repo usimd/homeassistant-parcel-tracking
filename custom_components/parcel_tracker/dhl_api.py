@@ -89,9 +89,7 @@ class DhlApi:
                 return None
 
             data = await resp.json()
-            _LOGGER.debug(
-                "DHL API response for %s: %s", tracking_number, data
-            )
+            _LOGGER.debug("DHL API response for %s: %s", tracking_number, data)
 
             shipments = data.get("shipments", [])
             if not shipments:
@@ -109,7 +107,5 @@ class DhlApi:
                 eta_timeframe_to=etod.get("estimatedUntil"),
             )
         except Exception:
-            _LOGGER.exception(
-                "Error getting DHL details for %s", tracking_number
-            )
+            _LOGGER.exception("Error getting DHL details for %s", tracking_number)
             return None

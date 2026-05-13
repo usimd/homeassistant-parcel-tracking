@@ -103,9 +103,7 @@ class ParcelTrackerOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Optional(
                     CONF_DHL_API_KEY,
-                    default=self._config_entry.options.get(
-                        CONF_DHL_API_KEY, ""
-                    ),
+                    default=self._config_entry.options.get(CONF_DHL_API_KEY, ""),
                 ): str,
                 vol.Optional(
                     CONF_CLEANUP_DAYS,

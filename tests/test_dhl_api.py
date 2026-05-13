@@ -1,10 +1,10 @@
 """Tests for the DHL API client."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from custom_components.parcel_tracker.dhl_api import DhlApi, DhlTrackingInfo, is_dhl_parcel
+from custom_components.parcel_tracker.dhl_api import DhlApi, is_dhl_parcel
 
 
 def test_is_dhl_parcel_by_carrier() -> None:

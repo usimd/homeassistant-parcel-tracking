@@ -154,9 +154,7 @@ async def test_options_flow_with_dhl_key(hass: HomeAssistant) -> None:
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "init"
 
-    with patch(
-        "custom_components.parcel_tracker.config_flow.DhlApi"
-    ) as mock_dhl_cls:
+    with patch("custom_components.parcel_tracker.config_flow.DhlApi") as mock_dhl_cls:
         mock_dhl = mock_dhl_cls.return_value
         mock_dhl.test_connection = AsyncMock(return_value=True)
 
@@ -188,9 +186,7 @@ async def test_options_flow_invalid_dhl_key(hass: HomeAssistant) -> None:
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    with patch(
-        "custom_components.parcel_tracker.config_flow.DhlApi"
-    ) as mock_dhl_cls:
+    with patch("custom_components.parcel_tracker.config_flow.DhlApi") as mock_dhl_cls:
         mock_dhl = mock_dhl_cls.return_value
         mock_dhl.test_connection = AsyncMock(return_value=False)
 

@@ -9,7 +9,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers import entity_registry as er
 
 from .api import Ship24Api
 from .const import (
@@ -25,7 +24,6 @@ from .const import (
     SERVICE_ADD,
     SERVICE_REMOVE,
     SIGNAL_NEW_PARCEL,
-    SIGNAL_REMOVE_PARCEL,
     WEBHOOK_ID,
 )
 from .coordinator import ParcelTrackerCoordinator
@@ -240,9 +238,7 @@ async def _add_parcel(
     return True
 
 
-async def _handle_webhook(
-    hass: HomeAssistant, webhook_id: str, request
-) -> None:
+async def _handle_webhook(hass: HomeAssistant, webhook_id: str, request) -> None:
     """Handle incoming webhook with a shared tracking URL."""
     from aiohttp import web
 
