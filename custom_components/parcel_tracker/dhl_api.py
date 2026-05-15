@@ -93,18 +93,35 @@ class DhlApi:
 
             shipments = data.get("shipments", [])
             if not shipments:
+                _LOGGER.debug("No shipments in DHL response for %s", tracking_number)
                 return None
 
             shipment = shipments[0]
+            
+            # Try to extract ETA from estimatedTimeOfDelivery
             etod = shipment.get("estimatedTimeOfDelivery", {})
-
-            if not etod:
+            eta_from = etod.get("estimatedFrom")
+            eta_to = etod.get("estimatedUntil")
+            
+            # Fallback: try events array for delivery milestone
+            if not eta_from and not eta_to:
+                events = shipment.get("events", [])
+                for event in events:
+                    if event.get("status") == "delivered":
+                        eta_from = event.get("timestamp")
+                        break
+            
+            if not eta_from and not eta_to:
+                _LOGGER.debug(
+                    "No ETA data in DHL response for %s",
+                    tracking_number,
+                )
                 return None
 
             return DhlTrackingInfo(
-                eta_date=etod.get("estimatedFrom") or etod.get("estimatedUntil"),
-                eta_timeframe_from=etod.get("estimatedFrom"),
-                eta_timeframe_to=etod.get("estimatedUntil"),
+                eta_date=eta_from or eta_to,
+                eta_timeframe_from=eta_from,
+                eta_timeframe_to=eta_to,
             )
         except Exception:
             _LOGGER.exception("Error getting DHL details for %s", tracking_number)

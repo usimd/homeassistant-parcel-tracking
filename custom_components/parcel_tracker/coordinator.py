@@ -122,6 +122,9 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
             # Auto-cleanup delivered parcels
             await self._cleanup_delivered_parcels()
 
+            # Clean up orphaned unavailable entities
+            await self.async_cleanup_unavailable_entities()
+
             # Persist changes
             await self.store.async_save()
 
@@ -140,16 +143,17 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
                 continue
             if not is_dhl_parcel(parcel.carrier):
                 continue
-            # Only call DHL if Ship24 didn't provide an ETA
-            if parcel.eta:
-                continue
 
             dhl_info = await self.dhl_api.get_details(tn)
             if dhl_info is None:
                 continue
 
-            if dhl_info.eta_date:
+            # Update ETA only if DHL provides one and we don't have one yet
+            if dhl_info.eta_date and not parcel.eta:
                 parcel.eta = dhl_info.eta_date
+                _LOGGER.debug("DHL ETA for %s: %s", tn, dhl_info.eta_date)
+            
+            # Always update timeframe (don't skip if eta exists)
             if dhl_info.eta_timeframe_from and dhl_info.eta_timeframe_to:
                 parcel.eta_timeframe = (
                     f"{dhl_info.eta_timeframe_from} – {dhl_info.eta_timeframe_to}"
@@ -178,6 +182,32 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
                 cleanup_days,
             )
             await self.async_remove_parcel(tn, save=False)
+
+    async def async_cleanup_unavailable_entities(self) -> None:
+        """Remove orphaned unavailable sensor entities from the registry.
+        
+        This cleans up entities whose parcels were removed but whose entity
+        registry entries still exist.
+        """
+        entity_registry = er.async_get(self.hass)
+        stored_tracking_numbers = set(self.store.get_all_tracking_numbers())
+        
+        for entity in list(entity_registry.entities.values()):
+            if entity.platform != DOMAIN or entity.domain != Platform.SENSOR:
+                continue
+            # Entity unique_id format is "<entry_id>_<tracking_number>"
+            if "_" not in entity.unique_id:
+                continue
+            entry_id, tracking_number = entity.unique_id.rsplit("_", 1)
+            if entry_id != self.entry.entry_id:
+                continue
+            if tracking_number not in stored_tracking_numbers:
+                _LOGGER.debug(
+                    "Removing orphaned entity %s for tracking number %s",
+                    entity.entity_id,
+                    tracking_number,
+                )
+                entity_registry.async_remove(entity.entity_id)
 
     async def async_remove_parcel(
         self, tracking_number: str, *, save: bool = True
