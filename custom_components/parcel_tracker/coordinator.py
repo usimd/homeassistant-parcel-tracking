@@ -21,6 +21,7 @@ from .const import (
     EVENT_STATUS_CHANGED,
     SIGNAL_REMOVE_PARCEL,
     STATUS_DELIVERED,
+    STATUS_OUT_FOR_DELIVERY,
 )
 from .dhl_api import DhlApi, is_dhl_parcel
 from .store import ParcelData, ParcelStore
@@ -134,7 +135,11 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
             raise UpdateFailed(f"Error communicating with Ship24 API: {err}") from err
 
     async def _enrich_dhl_parcels(self) -> None:
-        """Enrich DHL parcels with delivery time window from DHL API."""
+        """Enrich DHL parcels with delivery time window and status from DHL API.
+        
+        DHL API is often more current than Ship24. If DHL shows delivered
+        but Ship24 is stuck at out_for_delivery, trust DHL.
+        """
         if not self.dhl_api:
             return
 
@@ -148,6 +153,20 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
             if dhl_info is None:
                 continue
 
+            # If DHL shows delivered but Ship24 shows out_for_delivery,
+            # upgrade to delivered (DHL is usually more current)
+            if (
+                dhl_info.status_code == "delivered"
+                and parcel.status == STATUS_OUT_FOR_DELIVERY
+            ):
+                _LOGGER.info(
+                    "DHL shows delivered for %s, upgrading from out_for_delivery",
+                    tn,
+                )
+                parcel.status = STATUS_DELIVERED
+                if parcel.delivered_at is None:
+                    parcel.delivered_at = datetime.now().isoformat()
+            
             # Update ETA only if DHL provides one and we don't have one yet
             if dhl_info.eta_date and not parcel.eta:
                 parcel.eta = dhl_info.eta_date

@@ -29,6 +29,7 @@ class DhlTrackingInfo:
     eta_date: str | None = None
     eta_timeframe_from: str | None = None
     eta_timeframe_to: str | None = None
+    status_code: str | None = None  # 'delivered', 'transit', etc.
 
 
 def is_dhl_parcel(carrier: str, courier_code: str | None = None) -> bool:
@@ -98,6 +99,9 @@ class DhlApi:
 
             shipment = shipments[0]
             
+            # Extract status code (e.g., 'delivered', 'transit')
+            status_code = shipment.get("status", {}).get("statusCode")
+            
             eta_from = None
             eta_to = None
             eta_date = None
@@ -120,9 +124,9 @@ class DhlApi:
                     # Use the most recent event timestamp as a proxy
                     eta_date = events[0].get("timestamp")
             
-            if not eta_date:
+            if not eta_date and not status_code:
                 _LOGGER.debug(
-                    "No ETA data in DHL response for %s",
+                    "No ETA or status data in DHL response for %s",
                     tracking_number,
                 )
                 return None
@@ -131,6 +135,7 @@ class DhlApi:
                 eta_date=eta_date,
                 eta_timeframe_from=eta_from,
                 eta_timeframe_to=eta_to,
+                status_code=status_code,
             )
         except Exception:
             _LOGGER.exception("Error getting DHL details for %s", tracking_number)
