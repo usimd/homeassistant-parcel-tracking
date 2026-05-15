@@ -83,6 +83,33 @@ async def test_dhl_api_get_details_with_eta(hass) -> None:
 
 
 @pytest.mark.integration
+async def test_dhl_api_get_details_with_eta_string(hass) -> None:
+    """Test fetching DHL details when estimatedTimeOfDelivery is a simple date string."""
+    api = DhlApi(hass, "valid_key")
+
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_resp.json = AsyncMock(
+        return_value={
+            "shipments": [
+                {
+                    "id": "00340434758339589214",
+                    "estimatedTimeOfDelivery": "2026-05-15",
+                }
+            ]
+        }
+    )
+
+    with patch.object(api._session, "get", new=AsyncMock(return_value=mock_resp)):
+        result = await api.get_details("00340434758339589214")
+
+    assert result is not None
+    assert result.eta_date == "2026-05-15"
+    assert result.eta_timeframe_from is None
+    assert result.eta_timeframe_to is None
+
+
+@pytest.mark.integration
 async def test_dhl_api_get_details_no_eta(hass) -> None:
     """Test fetching DHL details without ETA."""
     api = DhlApi(hass, "valid_key")

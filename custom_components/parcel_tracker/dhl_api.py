@@ -98,20 +98,29 @@ class DhlApi:
 
             shipment = shipments[0]
             
-            # Try to extract ETA from estimatedTimeOfDelivery
-            etod = shipment.get("estimatedTimeOfDelivery", {})
-            eta_from = etod.get("estimatedFrom")
-            eta_to = etod.get("estimatedUntil")
+            eta_from = None
+            eta_to = None
+            eta_date = None
             
-            # Fallback: try events array for delivery milestone
-            if not eta_from and not eta_to:
+            # estimatedTimeOfDelivery can be a string or a dict
+            etod = shipment.get("estimatedTimeOfDelivery")
+            if isinstance(etod, str):
+                # It's a simple date string like '2026-05-15'
+                eta_date = etod
+            elif isinstance(etod, dict):
+                # It's a structured object with estimatedFrom/estimatedUntil
+                eta_from = etod.get("estimatedFrom")
+                eta_to = etod.get("estimatedUntil")
+                eta_date = eta_from or eta_to
+            
+            # Fallback: try events array for delivery timestamp if no ETA found yet
+            if not eta_date:
                 events = shipment.get("events", [])
-                for event in events:
-                    if event.get("status") == "delivered":
-                        eta_from = event.get("timestamp")
-                        break
+                if events:
+                    # Use the most recent event timestamp as a proxy
+                    eta_date = events[0].get("timestamp")
             
-            if not eta_from and not eta_to:
+            if not eta_date:
                 _LOGGER.debug(
                     "No ETA data in DHL response for %s",
                     tracking_number,
@@ -119,7 +128,7 @@ class DhlApi:
                 return None
 
             return DhlTrackingInfo(
-                eta_date=eta_from or eta_to,
+                eta_date=eta_date,
                 eta_timeframe_from=eta_from,
                 eta_timeframe_to=eta_to,
             )
