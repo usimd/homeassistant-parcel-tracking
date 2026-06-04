@@ -89,13 +89,14 @@ CARRIER_TRACKING_URLS: Final = {
     "Amazon": "https://www.amazon.de/progress-tracker/package/{tracking_number}",
 }
 
-# URL patterns for carrier auto-detection
+# URL patterns for carrier auto-detection.
+# Tuple: (url_domain_pattern, tracking_number_pattern, ship24_courier_code)
 CARRIER_URL_PATTERNS: Final = {
-    "DHL": (r"dhl\.de|nolp\.dhl\.de", r"[0-9]{12,20}"),
-    "DPD": (r"dpd\.de|tracking\.dpd", r"[0-9]{14}"),
-    "Hermes": (r"myhermes\.de|hermesworld", r"[0-9]{14,16}"),
-    "GLS": (r"gls-group\.com|gls-pakete", r"[A-Z0-9]{11,14}"),
-    "UPS": (r"ups\.com", r"1Z[A-Z0-9]{16}"),
-    "FedEx": (r"fedex\.com", r"[0-9]{12,22}"),
-    "Amazon": (r"amazon\.de/progress-tracker", r"[A-Z0-9]{12,}"),
+    "DHL":    (r"dhl\.de|nolp\.dhl\.de",          r"[0-9]{12,20}",    "dhl-group"),
+    "DPD":    (r"dpd\.de|tracking\.dpd",           r"[0-9]{14}",       "dpd"),
+    "Hermes": (r"myhermes\.de|hermesworld",         r"[0-9]{14,16}",    "hermes"),
+    "GLS":    (r"gls-group\.com|gls-pakete",        r"[A-Z0-9]{11,14}", "gls"),
+    "UPS":    (r"ups\.com",                         r"1Z[A-Z0-9]{16}",  "ups"),
+    "FedEx":  (r"fedex\.com",                       r"[0-9]{12,22}",    "fedex"),
+    "Amazon": (r"amazon\.de/progress-tracker",      r"[A-Z0-9]{12,}",   "amazon"),
 }

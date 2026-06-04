@@ -12,6 +12,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import Ship24Api
 from .const import (
+    CARRIER_URL_PATTERNS,
     CONF_CLEANUP_DAYS,
     CONF_DHL_API_KEY,
     CONF_SCAN_INTERVAL_HOURS,
@@ -22,6 +23,7 @@ from .const import (
     SIGNAL_REMOVE_PARCEL,
     STATUS_DELIVERED,
     STATUS_OUT_FOR_DELIVERY,
+    STATUS_REGISTERED,
 )
 from .dhl_api import DhlApi, is_dhl_parcel
 from .store import ParcelData, ParcelStore
@@ -66,11 +68,28 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
             now_iso = datetime.now().isoformat()
 
             for tn, parcel in list(self.store.parcels.items()):
+                # If the parcel is still registered with no events, clear the
+                # tracker_id so the next call re-creates the tracker with a
+                # courier code hint — this recovers stuck Ship24 auto-detection.
+                if (
+                    parcel.tracker_id
+                    and parcel.status == STATUS_REGISTERED
+                    and parcel.carrier in CARRIER_URL_PATTERNS
+                ):
+                    _LOGGER.debug(
+                        "Parcel %s stuck on registered with known carrier %s — "
+                        "retrying track() with courier hint",
+                        tn,
+                        parcel.carrier,
+                    )
+                    parcel.tracker_id = None
+
                 # Use stored tracker_id for subsequent calls (faster)
                 if parcel.tracker_id:
                     info = await self.api.get_results(parcel.tracker_id)
                 else:
-                    info = await self.api.track(tn)
+                    courier_hint = CARRIER_URL_PATTERNS[parcel.carrier][2] if parcel.carrier in CARRIER_URL_PATTERNS else None
+                    info = await self.api.track(tn, courier_hint)
 
                 if info is None:
                     continue

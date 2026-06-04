@@ -20,6 +20,9 @@ _LOGGER = logging.getLogger(__name__)
 
 BASE_URL = "https://api.ship24.com/public/v1"
 
+# Sentinel returned when Ship24 accepted the tracker but has no events yet
+TRACKING_PENDING = "pending"
+
 
 @dataclass
 class TrackingInfo:
@@ -66,17 +69,23 @@ class Ship24Api:
             _LOGGER.exception("Error testing Ship24 API connection")
             return False
 
-    async def track(self, tracking_number: str) -> TrackingInfo | None:
+    async def track(
+        self, tracking_number: str, courier_code: str | None = None
+    ) -> TrackingInfo | None:
         """Create tracker (idempotent) and get tracking results.
 
         Uses POST /trackers/track which creates a tracker if it doesn't exist
         and returns tracking results. Subsequent calls are instant.
+        Pass courier_code to hint Ship24 about the carrier when auto-detection fails.
         """
         try:
+            payload: dict = {"trackingNumber": tracking_number}
+            if courier_code:
+                payload["courierCode"] = [courier_code]
             resp = await self._session.post(
                 f"{BASE_URL}/trackers/track",
                 headers=self._headers,
-                json={"trackingNumber": tracking_number},
+                json=payload,
             )
 
             if resp.status not in (200, 201):
@@ -102,12 +111,16 @@ class Ship24Api:
             status_milestone = shipment.get("statusMilestone", "pending")
             status = SHIP24_STATUS_MAP.get(status_milestone, STATUS_UNKNOWN)
 
-            # Get courier info
+            # Get courier info from events or tracker-level courierCode list
             courier_code = None
             courier_name = None
             if events:
                 courier_code = events[0].get("courierCode")
                 courier_name = events[0].get("courierName")
+            if not courier_code:
+                codes = tracker.get("courierCode", [])
+                if codes:
+                    courier_code = codes[0]
 
             # Get ETA - prefer courier estimate, fall back to Ship24 estimate
             delivery = shipment.get("delivery", {})
@@ -169,6 +182,10 @@ class Ship24Api:
             if events:
                 courier_code = events[0].get("courierCode")
                 courier_name = events[0].get("courierName")
+            if not courier_code:
+                codes = tracker.get("courierCode", [])
+                if codes:
+                    courier_code = codes[0]
 
             # Get ETA - prefer courier estimate, fall back to Ship24 estimate
             delivery = shipment.get("delivery", {})

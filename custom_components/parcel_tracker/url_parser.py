@@ -11,7 +11,7 @@ def parse_tracking_url(url: str) -> tuple[str | None, str | None]:
     Returns:
         Tuple of (carrier, tracking_number) or (None, None) if not recognized.
     """
-    for carrier, (domain_pattern, number_pattern) in CARRIER_URL_PATTERNS.items():
+    for carrier, (domain_pattern, number_pattern, _) in CARRIER_URL_PATTERNS.items():
         if re.search(domain_pattern, url, re.IGNORECASE):
             match = re.search(number_pattern, url)
             if match:
