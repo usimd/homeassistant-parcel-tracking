@@ -1,5 +1,5 @@
 [project]
-name = ""
+name = "homeassistant-parcel-tracking"
 version = "0.2.6"
 dependencies = []
 requires-python = ">=3.13.2"
