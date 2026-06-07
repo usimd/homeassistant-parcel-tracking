@@ -98,14 +98,14 @@ class DhlApi:
                 return None
 
             shipment = shipments[0]
-            
+
             # Extract status code (e.g., 'delivered', 'transit')
             status_code = shipment.get("status", {}).get("statusCode")
-            
+
             eta_from = None
             eta_to = None
             eta_date = None
-            
+
             # estimatedTimeOfDelivery can be a string or a dict
             etod = shipment.get("estimatedTimeOfDelivery")
             if isinstance(etod, str):
@@ -116,14 +116,14 @@ class DhlApi:
                 eta_from = etod.get("estimatedFrom")
                 eta_to = etod.get("estimatedUntil")
                 eta_date = eta_from or eta_to
-            
+
             # Fallback: try events array for delivery timestamp if no ETA found yet
             if not eta_date:
                 events = shipment.get("events", [])
                 if events:
                     # Use the most recent event timestamp as a proxy
                     eta_date = events[0].get("timestamp")
-            
+
             if not eta_date and not status_code:
                 _LOGGER.debug(
                     "No ETA or status data in DHL response for %s",

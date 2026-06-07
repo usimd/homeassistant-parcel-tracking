@@ -88,7 +88,11 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
                 if parcel.tracker_id:
                     info = await self.api.get_results(parcel.tracker_id)
                 else:
-                    courier_hint = CARRIER_URL_PATTERNS[parcel.carrier][2] if parcel.carrier in CARRIER_URL_PATTERNS else None
+                    courier_hint = (
+                        CARRIER_URL_PATTERNS[parcel.carrier][2]
+                        if parcel.carrier in CARRIER_URL_PATTERNS
+                        else None
+                    )
                     info = await self.api.track(tn, courier_hint)
 
                 if info is None:
@@ -155,7 +159,7 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
 
     async def _enrich_dhl_parcels(self) -> None:
         """Enrich DHL parcels with delivery time window and status from DHL API.
-        
+
         DHL API is often more current than Ship24. If DHL shows delivered
         but Ship24 is stuck at out_for_delivery, trust DHL.
         """
@@ -185,12 +189,12 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
                 parcel.status = STATUS_DELIVERED
                 if parcel.delivered_at is None:
                     parcel.delivered_at = datetime.now().isoformat()
-            
+
             # Update ETA only if DHL provides one and we don't have one yet
             if dhl_info.eta_date and not parcel.eta:
                 parcel.eta = dhl_info.eta_date
                 _LOGGER.debug("DHL ETA for %s: %s", tn, dhl_info.eta_date)
-            
+
             # Always update timeframe (don't skip if eta exists)
             if dhl_info.eta_timeframe_from and dhl_info.eta_timeframe_to:
                 parcel.eta_timeframe = (
@@ -223,13 +227,13 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
 
     async def async_cleanup_unavailable_entities(self) -> None:
         """Remove orphaned unavailable sensor entities from the registry.
-        
+
         This cleans up entities whose parcels were removed but whose entity
         registry entries still exist.
         """
         entity_registry = er.async_get(self.hass)
         stored_tracking_numbers = set(self.store.get_all_tracking_numbers())
-        
+
         for entity in list(entity_registry.entities.values()):
             if entity.platform != DOMAIN or entity.domain != Platform.SENSOR:
                 continue
