@@ -1,6 +1,7 @@
 """Config flow for Parcel Tracker integration."""
 
 import logging
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -17,6 +18,8 @@ from .api import Ship24Api
 from .const import (
     CONF_API_KEY,
     CONF_CLEANUP_DAYS,
+    CONF_DESTINATION_COUNTRY_CODE,
+    CONF_DESTINATION_POST_CODE,
     CONF_DHL_API_KEY,
     CONF_SCAN_INTERVAL_HOURS,
     DEFAULT_CLEANUP_DAYS,
@@ -26,6 +29,7 @@ from .const import (
 from .dhl_api import DhlApi
 
 _LOGGER = logging.getLogger(__name__)
+COUNTRY_CODE_PATTERN = re.compile(r"^[A-Z]{2,3}$")
 
 
 class ParcelTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -89,6 +93,19 @@ class ParcelTrackerOptionsFlow(config_entries.OptionsFlow):
         errors = {}
 
         if user_input is not None:
+            # Normalize optional destination metadata.
+            raw_country = str(user_input.get(CONF_DESTINATION_COUNTRY_CODE, "")).strip()
+            raw_post_code = str(user_input.get(CONF_DESTINATION_POST_CODE, "")).strip()
+            normalized_country = raw_country.upper()
+
+            user_input[CONF_DESTINATION_COUNTRY_CODE] = normalized_country
+            user_input[CONF_DESTINATION_POST_CODE] = raw_post_code
+
+            if normalized_country and not COUNTRY_CODE_PATTERN.fullmatch(
+                normalized_country
+            ):
+                errors[CONF_DESTINATION_COUNTRY_CODE] = "invalid_country_code"
+
             # Validate DHL API key if provided
             dhl_key = user_input.get(CONF_DHL_API_KEY, "")
             if dhl_key:
@@ -104,6 +121,18 @@ class ParcelTrackerOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_DHL_API_KEY,
                     default=self._config_entry.options.get(CONF_DHL_API_KEY, ""),
+                ): str,
+                vol.Optional(
+                    CONF_DESTINATION_COUNTRY_CODE,
+                    default=self._config_entry.options.get(
+                        CONF_DESTINATION_COUNTRY_CODE, ""
+                    ),
+                ): str,
+                vol.Optional(
+                    CONF_DESTINATION_POST_CODE,
+                    default=self._config_entry.options.get(
+                        CONF_DESTINATION_POST_CODE, ""
+                    ),
                 ): str,
                 vol.Optional(
                     CONF_CLEANUP_DAYS,

@@ -10,6 +10,8 @@ from homeassistant.data_entry_flow import FlowResultType
 from custom_components.parcel_tracker.const import (
     CONF_API_KEY,
     CONF_CLEANUP_DAYS,
+    CONF_DESTINATION_COUNTRY_CODE,
+    CONF_DESTINATION_POST_CODE,
     CONF_DHL_API_KEY,
     CONF_SCAN_INTERVAL_HOURS,
     DOMAIN,
@@ -128,12 +130,16 @@ async def test_options_flow(hass: HomeAssistant) -> None:
         user_input={
             CONF_CLEANUP_DAYS: 5,
             CONF_SCAN_INTERVAL_HOURS: 4,
+            CONF_DESTINATION_COUNTRY_CODE: "DE",
+            CONF_DESTINATION_POST_CODE: "80331",
         },
     )
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_CLEANUP_DAYS] == 5
     assert result["data"][CONF_SCAN_INTERVAL_HOURS] == 4
+    assert result["data"][CONF_DESTINATION_COUNTRY_CODE] == "DE"
+    assert result["data"][CONF_DESTINATION_POST_CODE] == "80331"
 
 
 @pytest.mark.integration
@@ -169,6 +175,65 @@ async def test_options_flow_with_dhl_key(hass: HomeAssistant) -> None:
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_DHL_API_KEY] == "valid_dhl_key"
+
+
+@pytest.mark.integration
+async def test_options_flow_invalid_destination_country_code(hass: HomeAssistant) -> None:
+    """Test options flow rejects invalid destination country codes."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Parcel Tracker",
+        data={CONF_API_KEY: "test_key"},
+        unique_id=DOMAIN,
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_DESTINATION_COUNTRY_CODE: "DE-1",
+            CONF_DESTINATION_POST_CODE: "80331",
+            CONF_CLEANUP_DAYS: 3,
+            CONF_SCAN_INTERVAL_HOURS: 2,
+        },
+    )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"] == {CONF_DESTINATION_COUNTRY_CODE: "invalid_country_code"}
+
+
+@pytest.mark.integration
+async def test_options_flow_normalizes_destination_fields(hass: HomeAssistant) -> None:
+    """Test options flow normalizes destination metadata before saving."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Parcel Tracker",
+        data={CONF_API_KEY: "test_key"},
+        unique_id=DOMAIN,
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_DESTINATION_COUNTRY_CODE: " deu ",
+            CONF_DESTINATION_POST_CODE: " 80331 ",
+            CONF_CLEANUP_DAYS: 3,
+            CONF_SCAN_INTERVAL_HOURS: 2,
+        },
+    )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_DESTINATION_COUNTRY_CODE] == "DEU"
+    assert result["data"][CONF_DESTINATION_POST_CODE] == "80331"
 
 
 @pytest.mark.integration

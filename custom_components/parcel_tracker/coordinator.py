@@ -14,6 +14,8 @@ from .api import Ship24Api
 from .const import (
     CARRIER_URL_PATTERNS,
     CONF_CLEANUP_DAYS,
+    CONF_DESTINATION_COUNTRY_CODE,
+    CONF_DESTINATION_POST_CODE,
     CONF_DHL_API_KEY,
     CONF_SCAN_INTERVAL_HOURS,
     DEFAULT_CLEANUP_DAYS,
@@ -66,6 +68,9 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
         """Fetch tracking data from Ship24 API."""
         try:
             now_iso = datetime.now().isoformat()
+            destination_country_code, destination_post_code = (
+                self._get_home_destination_metadata()
+            )
 
             for tn, parcel in list(self.store.parcels.items()):
                 # If the parcel is still registered with no events, clear the
@@ -93,7 +98,12 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
                         if parcel.carrier in CARRIER_URL_PATTERNS
                         else None
                     )
-                    info = await self.api.track(tn, courier_hint)
+                    info = await self.api.track(
+                        tn,
+                        courier_hint,
+                        destination_country_code=destination_country_code,
+                        destination_post_code=destination_post_code,
+                    )
 
                 if info is None:
                     continue
@@ -156,6 +166,51 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
         except Exception as err:
             _LOGGER.error("Error fetching parcel tracking data: %s", err)
             raise UpdateFailed(f"Error communicating with Ship24 API: {err}") from err
+
+    def _get_home_destination_metadata(self) -> tuple[str | None, str | None]:
+        """Get destination country/post code for Ship24 requests.
+
+        Explicit options override Home Assistant home data.
+        """
+        country = self.entry.options.get(CONF_DESTINATION_COUNTRY_CODE, None)
+        postal_code = self.entry.options.get(CONF_DESTINATION_POST_CODE, None)
+
+        if isinstance(country, str):
+            country = country.strip().upper() or None
+        if isinstance(postal_code, str):
+            postal_code = postal_code.strip() or None
+
+        if country and postal_code:
+            return country, postal_code
+
+        if not country:
+            country = getattr(self.hass.config, "country", None)
+        if not postal_code:
+            postal_code = getattr(self.hass.config, "postal_code", None)
+
+        home_state = self.hass.states.get("zone.home")
+        if home_state:
+            if not country:
+                country = home_state.attributes.get("country")
+            if not postal_code:
+                for key in (
+                    "postal_code",
+                    "postcode",
+                    "post_code",
+                    "zip",
+                    "zip_code",
+                ):
+                    value = home_state.attributes.get(key)
+                    if value:
+                        postal_code = value
+                        break
+
+        if isinstance(country, str):
+            country = country.strip().upper() or None
+        if isinstance(postal_code, str):
+            postal_code = postal_code.strip() or None
+
+        return country, postal_code
 
     async def _enrich_dhl_parcels(self) -> None:
         """Enrich DHL parcels with delivery time window and status from DHL API.

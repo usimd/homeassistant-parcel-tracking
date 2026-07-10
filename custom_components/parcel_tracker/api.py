@@ -70,18 +70,27 @@ class Ship24Api:
             return False
 
     async def track(
-        self, tracking_number: str, courier_code: str | None = None
+        self,
+        tracking_number: str,
+        courier_code: str | None = None,
+        destination_country_code: str | None = None,
+        destination_post_code: str | None = None,
     ) -> TrackingInfo | None:
         """Create tracker (idempotent) and get tracking results.
 
         Uses POST /trackers/track which creates a tracker if it doesn't exist
         and returns tracking results. Subsequent calls are instant.
         Pass courier_code to hint Ship24 about the carrier when auto-detection fails.
+        Destination metadata can improve matching for some couriers.
         """
         try:
             payload: dict = {"trackingNumber": tracking_number}
             if courier_code:
                 payload["courierCode"] = [courier_code]
+            if destination_country_code:
+                payload["destinationCountryCode"] = destination_country_code
+            if destination_post_code:
+                payload["destinationPostCode"] = destination_post_code
             resp = await self._session.post(
                 f"{BASE_URL}/trackers/track",
                 headers=self._headers,

@@ -24,18 +24,23 @@
         "description": "Configure tracking behavior",
         "data": {
           "dhl_api_key": "DHL API Key (optional)",
+          "destination_country_code": "Destination country code override (optional)",
+          "destination_post_code": "Destination post code override (optional)",
           "cleanup_days": "Days after delivery before auto-removal",
           "scan_interval_hours": "Polling interval (hours)"
         },
         "data_description": {
           "dhl_api_key": "Optional. Provides delivery time windows for DHL parcels. Get a free key at https://developer.dhl.com",
+          "destination_country_code": "Optional ISO 3166-1 alpha-2/alpha-3 country code (for example DE). If set, this overrides Home location country.",
+          "destination_post_code": "Optional recipient post code/ZIP. If set, this overrides Home location postal code.",
           "cleanup_days": "Number of days after a parcel is delivered before it is automatically removed (1-30)",
           "scan_interval_hours": "How often to poll Ship24 API for status updates (1-12 hours)"
         }
       }
     },
     "error": {
-      "dhl_cannot_connect": "Cannot connect to DHL API. Please check your API key."
+      "dhl_cannot_connect": "Cannot connect to DHL API. Please check your API key.",
+      "invalid_country_code": "Country code must be 2 or 3 letters (ISO 3166-1 alpha-2/alpha-3), for example DE or DEU."
     }
   },
   "entity": {

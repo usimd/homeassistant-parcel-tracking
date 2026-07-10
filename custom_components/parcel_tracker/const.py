@@ -9,6 +9,8 @@ CONF_API_KEY: Final = "api_key"
 CONF_DHL_API_KEY: Final = "dhl_api_key"
 CONF_CLEANUP_DAYS: Final = "cleanup_days"
 CONF_SCAN_INTERVAL_HOURS: Final = "scan_interval_hours"
+CONF_DESTINATION_COUNTRY_CODE: Final = "destination_country_code"
+CONF_DESTINATION_POST_CODE: Final = "destination_post_code"
 
 # Defaults
 DEFAULT_CLEANUP_DAYS: Final = 3
