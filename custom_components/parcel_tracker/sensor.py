@@ -134,6 +134,12 @@ class ParcelSensor(CoordinatorEntity[ParcelTrackerCoordinator], SensorEntity):
         }
         if parcel.eta:
             attrs[ATTR_ETA] = parcel.eta
+        elif self.hass:
+            # Preserve manually overridden ETA if upstream did not provide one.
+            entity_id = self.entity_id or getattr(self, "_attr_entity_id", None)
+            existing_state = self.hass.states.get(entity_id) if entity_id else None
+            if existing_state and ATTR_ETA in existing_state.attributes:
+                attrs[ATTR_ETA] = existing_state.attributes[ATTR_ETA]
         if parcel.eta_timeframe:
             attrs[ATTR_ETA_TIMEFRAME] = parcel.eta_timeframe
         if parcel.registered_by:
