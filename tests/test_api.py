@@ -28,7 +28,9 @@ async def test_track_includes_destination_metadata_when_provided(hass) -> None:
         }
     )
 
-    with patch.object(api._session, "post", new=AsyncMock(return_value=mock_resp)) as post:
+    with patch.object(
+        api._session, "post", new=AsyncMock(return_value=mock_resp)
+    ) as post:
         await api.track(
             "TRACK123",
             courier_code="gls-de",
@@ -64,7 +66,9 @@ async def test_track_omits_destination_metadata_when_missing(hass) -> None:
         }
     )
 
-    with patch.object(api._session, "post", new=AsyncMock(return_value=mock_resp)) as post:
+    with patch.object(
+        api._session, "post", new=AsyncMock(return_value=mock_resp)
+    ) as post:
         await api.track("TRACK123", courier_code="dhl-group")
 
     payload = post.await_args.kwargs["json"]

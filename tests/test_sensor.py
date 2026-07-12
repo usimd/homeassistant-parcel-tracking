@@ -36,7 +36,9 @@ async def test_extra_state_attributes_preserve_existing_eta(hass) -> None:
 async def test_extra_state_attributes_use_parcel_eta_when_available(hass) -> None:
     """Use parcel ETA from API/store when available."""
     tracking_number = "TRACK123"
-    parcel = ParcelData(tracking_number=tracking_number, carrier="DHL", eta="2026-07-13")
+    parcel = ParcelData(
+        tracking_number=tracking_number, carrier="DHL", eta="2026-07-13"
+    )
 
     coordinator = MagicMock()
     coordinator.store.get.return_value = parcel

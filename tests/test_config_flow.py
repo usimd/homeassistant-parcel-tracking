@@ -178,7 +178,9 @@ async def test_options_flow_with_dhl_key(hass: HomeAssistant) -> None:
 
 
 @pytest.mark.integration
-async def test_options_flow_invalid_destination_country_code(hass: HomeAssistant) -> None:
+async def test_options_flow_invalid_destination_country_code(
+    hass: HomeAssistant,
+) -> None:
     """Test options flow rejects invalid destination country codes."""
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
