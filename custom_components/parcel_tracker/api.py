@@ -75,22 +75,33 @@ class Ship24Api:
         courier_code: str | None = None,
         destination_country_code: str | None = None,
         destination_post_code: str | None = None,
+        shipping_date: str | None = None,
     ) -> TrackingInfo | None:
         """Create tracker (idempotent) and get tracking results.
 
         Uses POST /trackers/track which creates a tracker if it doesn't exist
         and returns tracking results. Subsequent calls are instant.
         Pass courier_code to hint Ship24 about the carrier when auto-detection fails.
-        Destination metadata can improve matching for some couriers.
+        Destination metadata and shipping_date improve matching for some couriers,
+        especially those that reuse tracking numbers (DPD, GLS, Hermes).
+
+        The payload is kept deterministic per parcel so repeated calls stay
+        idempotent: Ship24 spawns a new tracker (and burns a credit) if any
+        field differs from the original creation payload.
         """
         try:
             payload: dict = {"trackingNumber": tracking_number}
             if courier_code:
                 payload["courierCode"] = [courier_code]
+                # Lock tracking to the known courier for cleaner single-courier
+                # data instead of letting Ship24 mix in other providers.
+                payload["settings"] = {"restrictTrackingToCourierCode": True}
             if destination_country_code:
                 payload["destinationCountryCode"] = destination_country_code
             if destination_post_code:
                 payload["destinationPostCode"] = destination_post_code
+            if shipping_date:
+                payload["shippingDate"] = shipping_date
             resp = await self._session.post(
                 f"{BASE_URL}/trackers/track",
                 headers=self._headers,

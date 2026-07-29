@@ -98,11 +98,25 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
                         if parcel.carrier in CARRIER_URL_PATTERNS
                         else None
                     )
+                    # Derive a date-only shipping-date hint from when the parcel
+                    # was registered — improves Ship24 matching for couriers that
+                    # reuse tracking numbers (DPD, GLS, Hermes).
+                    shipping_date: str | None = None
+                    if parcel.registered_at:
+                        try:
+                            shipping_date = (
+                                datetime.fromisoformat(parcel.registered_at)
+                                .date()
+                                .isoformat()
+                            )
+                        except ValueError:
+                            shipping_date = None
                     info = await self.api.track(
                         tn,
                         courier_hint,
                         destination_country_code=destination_country_code,
                         destination_post_code=destination_post_code,
+                        shipping_date=shipping_date,
                     )
 
                 if info is None:
