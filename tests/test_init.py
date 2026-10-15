@@ -1,7 +1,7 @@
 """Test the parcel_tracker integration setup."""
 
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.const import Platform
@@ -9,11 +9,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.parcel_tracker import _handle_webhook
 from custom_components.parcel_tracker.const import (
     CONF_API_KEY,
     CONF_CLEANUP_DAYS,
     DOMAIN,
     STATUS_DELIVERED,
+    WEBHOOK_ID,
 )
 from custom_components.parcel_tracker.store import ParcelData
 
@@ -189,3 +191,27 @@ async def test_webhook_registered(hass: HomeAssistant) -> None:
         await hass.async_block_till_done()
 
     assert "parcel_tracker_register" in hass.data["webhook"]
+
+
+@pytest.mark.integration
+async def test_webhook_registers_gls_short_tracking_number(
+    hass: HomeAssistant, mock_store
+) -> None:
+    """Test registering an eight-character GLS number from a .eu URL."""
+    tracking_url = "https://gls-group.eu/DE/de/paketverfolgung?match=ZPXW6MM0"
+    coordinator = MagicMock()
+    coordinator.store = mock_store
+    coordinator.async_request_refresh = AsyncMock()
+    hass.data[DOMAIN] = {"test_entry": coordinator}
+    request = MagicMock()
+    request.json = AsyncMock(return_value={"url": tracking_url})
+
+    response = await _handle_webhook(hass, WEBHOOK_ID, request)
+
+    assert response.status == 200
+    parcel = mock_store.add.call_args.args[0]
+    assert parcel.tracking_number == "ZPXW6MM0"
+    assert parcel.carrier == "GLS"
+    assert parcel.tracking_url == tracking_url
+    mock_store.async_save.assert_awaited_once()
+    coordinator.async_request_refresh.assert_awaited_once()

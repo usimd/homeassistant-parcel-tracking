@@ -40,12 +40,18 @@ class TestParseTrackingUrl:
         assert carrier == "Hermes"
         assert number == "12345678901234"
 
-    def test_gls_url(self):
+    @pytest.mark.parametrize(
+        "domain", ["gls-group.com", "gls-group.eu", "gls-pakete.de"]
+    )
+    @pytest.mark.parametrize(
+        "tracking_number", ["ZPXW6MM0", "A1B2C3D4E5F6", "A1B2C3D4E5F6G7"]
+    )
+    def test_gls_url(self, domain, tracking_number):
         """Test GLS URL parsing."""
-        url = "https://gls-group.com/DE/de/paketverfolgung?match=A1B2C3D4E5F6"
+        url = f"https://{domain}/DE/de/paketverfolgung?match={tracking_number}"
         carrier, number = parse_tracking_url(url)
         assert carrier == "GLS"
-        assert number == "A1B2C3D4E5F6"
+        assert number == tracking_number
 
     def test_fedex_url(self):
         """Test FedEx URL parsing."""

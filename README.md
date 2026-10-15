@@ -19,6 +19,7 @@
 
 - Track parcels across **1500+ carriers** (DHL, DPD, Hermes, GLS, UPS, FedEx, Amazon, etc.) with a single API key
 - Automatic carrier detection from tracking URLs
+- GLS URL detection supports `gls-group.com`, `gls-group.eu`, and `gls-pakete` links with 8-14 character tracking numbers
 - Periodic status polling with configurable interval
 - Deep links to carrier delivery preference pages (Abstellgenehmigung, etc.)
 - Status change events for automations (door opener, notifications)
