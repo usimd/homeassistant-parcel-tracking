@@ -2,7 +2,7 @@
 
 import logging
 from datetime import date
-from secrets import token_urlsafe
+from secrets import compare_digest, token_urlsafe
 from typing import Any, cast
 from urllib.parse import urlsplit
 
@@ -28,6 +28,8 @@ from .const import (
     CONF_API_KEY,
     CONF_WEBHOOK_ID,
     CONF_WEBHOOK_ALLOW_EXTERNAL,
+    CONF_SHIP24_WEBHOOK_ID,
+    CONF_SHIP24_WEBHOOK_SECRET,
     DOMAIN,
     EVENT_PARCEL_ADDED,
     SERVICE_ADD,
@@ -91,6 +93,79 @@ SERVICE_REMOVE_SCHEMA = vol.Schema(
     }
 )
 
+SHIP24_PUSH_SCHEMA = vol.Schema(
+    {
+        vol.Required("trackings"): [
+            vol.Schema(
+                {
+                    vol.Required("tracker"): vol.Schema(
+                        {
+                            vol.Required("trackerId"): vol.All(str, vol.Length(min=1)),
+                            vol.Required("trackingNumber"): vol.All(
+                                str, vol.Length(min=1)
+                            ),
+                            vol.Optional("courierCode"): vol.Any(None, str, [str]),
+                            vol.Optional("courierName"): vol.Any(None, str),
+                        },
+                        extra=vol.ALLOW_EXTRA,
+                    ),
+                    vol.Required("shipment"): vol.Schema(
+                        {
+                            vol.Required("statusMilestone"): str,
+                            vol.Optional("delivery"): vol.Any(
+                                None,
+                                vol.Schema(
+                                    {
+                                        vol.Optional("estimatedDeliveryDate"): vol.Any(
+                                            None, str
+                                        ),
+                                        vol.Optional(
+                                            "courierEstimatedDeliveryDate"
+                                        ): vol.Any(
+                                            None,
+                                            vol.Schema(
+                                                {
+                                                    vol.Optional("from"): vol.Any(
+                                                        None, str
+                                                    ),
+                                                    vol.Optional("to"): vol.Any(
+                                                        None, str
+                                                    ),
+                                                },
+                                                extra=vol.ALLOW_EXTRA,
+                                            ),
+                                        ),
+                                    },
+                                    extra=vol.ALLOW_EXTRA,
+                                ),
+                            ),
+                        },
+                        extra=vol.ALLOW_EXTRA,
+                    ),
+                    vol.Optional("events"): vol.Any(
+                        None,
+                        [
+                            vol.Schema(
+                                {
+                                    vol.Optional("courierCode"): vol.Any(None, str),
+                                    vol.Optional("occurrenceDatetime"): vol.Any(
+                                        None, str
+                                    ),
+                                    vol.Optional("status"): vol.Any(None, str),
+                                    vol.Optional("order"): vol.Any(None, int),
+                                },
+                                extra=vol.ALLOW_EXTRA,
+                            )
+                        ],
+                    ),
+                },
+                extra=vol.ALLOW_EXTRA,
+            )
+        ],
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Parcel Tracker from a config entry."""
@@ -128,12 +203,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _register_services(hass)
         _LOGGER.debug("Services registered")
 
-    webhook_id = entry.data.get(CONF_WEBHOOK_ID)
-    if not webhook_id or webhook_id == WEBHOOK_ID:
-        webhook_id = token_urlsafe(32)
-        hass.config_entries.async_update_entry(
-            entry, data={**entry.data, CONF_WEBHOOK_ID: webhook_id}
-        )
+    entry_data = dict(entry.data)
+    if not entry_data.get(CONF_WEBHOOK_ID) or entry_data[CONF_WEBHOOK_ID] == WEBHOOK_ID:
+        entry_data[CONF_WEBHOOK_ID] = token_urlsafe(32)
+    if not entry_data.get(CONF_SHIP24_WEBHOOK_ID):
+        entry_data[CONF_SHIP24_WEBHOOK_ID] = token_urlsafe(32)
+    if entry_data != entry.data:
+        hass.config_entries.async_update_entry(entry, data=entry_data)
+    webhook_id = entry_data[CONF_WEBHOOK_ID]
     webhook.async_unregister(hass, WEBHOOK_ID)
     if webhook_id not in hass.data.get("webhook", {}):
         webhook.async_register(
@@ -144,6 +221,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _handle_webhook,
             allowed_methods=["POST"],
             local_only=not entry.options.get(CONF_WEBHOOK_ALLOW_EXTERNAL, False),
+        )
+    if entry.options.get(CONF_SHIP24_WEBHOOK_SECRET):
+        webhook.async_register(
+            hass,
+            DOMAIN,
+            "Parcel Tracker Ship24 updates",
+            entry_data[CONF_SHIP24_WEBHOOK_ID],
+            _handle_ship24_webhook,
+            allowed_methods=["POST"],
+            local_only=False,
         )
 
     # Set up options flow listener
@@ -318,14 +405,47 @@ async def _handle_webhook(
     raise web.HTTPUnprocessableEntity(text="Could not register parcel")
 
 
+async def _handle_ship24_webhook(
+    hass: HomeAssistant, webhook_id: str, request: web.Request
+) -> web.Response:
+    """Authenticate and validate a Ship24 batch before applying any updates."""
+    coordinator = next(
+        (
+            coordinator
+            for coordinator in hass.data.get(DOMAIN, {}).values()
+            if coordinator.entry.data.get(CONF_SHIP24_WEBHOOK_ID) == webhook_id
+        ),
+        None,
+    )
+    if coordinator is None:
+        return web.Response(status=404)
+    secret = coordinator.entry.options.get(CONF_SHIP24_WEBHOOK_SECRET, "")
+    authorization = request.headers.get("Authorization", "")
+    if not secret or not compare_digest(
+        authorization.encode("utf-8"), f"Bearer {secret}".encode("utf-8")
+    ):
+        return web.Response(status=401)
+    try:
+        data = cast(dict[str, Any], SHIP24_PUSH_SCHEMA(await request.json()))
+    except (ValueError, vol.Invalid):
+        return web.Response(status=400, text="Invalid Ship24 tracking payload")
+    try:
+        await coordinator.async_process_ship24_updates(data["trackings"])
+    except Exception:
+        _LOGGER.exception("Unable to apply Ship24 tracking updates")
+        return web.Response(status=503)
+    return web.json_response({"status": "ok"})
+
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
-        webhook_id = entry.data.get(CONF_WEBHOOK_ID)
-        if webhook_id:
-            webhook.async_unregister(hass, webhook_id)
+        for key in (CONF_WEBHOOK_ID, CONF_SHIP24_WEBHOOK_ID):
+            webhook_id = entry.data.get(key)
+            if webhook_id:
+                webhook.async_unregister(hass, webhook_id)
         hass.data[DOMAIN].pop(entry.entry_id)
 
         # Remove services if no more entries

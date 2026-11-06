@@ -12,6 +12,9 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
 )
 
 from .api import Ship24Api
@@ -24,6 +27,8 @@ from .const import (
     CONF_SCAN_INTERVAL_HOURS,
     CONF_WEBHOOK_ALLOW_EXTERNAL,
     CONF_WEBHOOK_ID,
+    CONF_SHIP24_WEBHOOK_SECRET,
+    CONF_SHIP24_WEBHOOK_ID,
     DEFAULT_CLEANUP_DAYS,
     DEFAULT_SCAN_INTERVAL_HOURS,
     DOMAIN,
@@ -137,6 +142,12 @@ class ParcelTrackerOptionsFlow(config_entries.OptionsFlow):
                     ),
                 ): str,
                 vol.Optional(
+                    CONF_SHIP24_WEBHOOK_SECRET,
+                    default=self._config_entry.options.get(
+                        CONF_SHIP24_WEBHOOK_SECRET, ""
+                    ),
+                ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
+                vol.Optional(
                     CONF_WEBHOOK_ALLOW_EXTERNAL,
                     default=self._config_entry.options.get(
                         CONF_WEBHOOK_ALLOW_EXTERNAL, False
@@ -176,6 +187,7 @@ class ParcelTrackerOptionsFlow(config_entries.OptionsFlow):
             data_schema=data_schema,
             errors=errors,
             description_placeholders={
-                "webhook_path": f"/api/webhook/{self._config_entry.data.get(CONF_WEBHOOK_ID, '')}"
+                "webhook_path": f"/api/webhook/{self._config_entry.data.get(CONF_WEBHOOK_ID, '')}",
+                "ship24_webhook_path": f"/api/webhook/{self._config_entry.data.get(CONF_SHIP24_WEBHOOK_ID, '')}",
             },
         )

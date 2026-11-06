@@ -1,8 +1,11 @@
 """Test the parcel store module."""
 
 import pytest
+from unittest.mock import AsyncMock, patch
 
-from custom_components.parcel_tracker.store import ParcelData
+from homeassistant.helpers import storage
+
+from custom_components.parcel_tracker.store import ParcelData, ParcelStore
 
 
 @pytest.mark.unit
@@ -91,3 +94,18 @@ class TestParcelData:
         parcel = ParcelData("TRACK123", "USPS", **{field: value})
         restored = ParcelData.from_dict(parcel.to_dict())
         assert getattr(restored, field) == value
+
+
+async def test_verified_save_detects_swallowed_homeassistant_write_error(hass):
+    store = ParcelStore(hass)
+    parcel = ParcelData("TRACK123", "DHL")
+    store.add(parcel)
+    await store.async_save()
+    parcel.status = "delivered"
+    with patch.object(
+        store._store,
+        "_async_write_data",
+        new=AsyncMock(side_effect=storage.WriteError("disk full")),
+    ):
+        with pytest.raises(OSError):
+            await store.async_save(verify=True)

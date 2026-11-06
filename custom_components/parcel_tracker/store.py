@@ -35,6 +35,7 @@ class ParcelData:
     status_source: str | None = None
     latest_event_time: str | None = None
     latest_event_description: str | None = None
+    latest_event_order: int | None = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for storage."""
@@ -70,11 +71,12 @@ class ParcelStore:
             }
             _LOGGER.debug("Loaded %d parcels from storage", len(self._parcels))
 
-    async def async_save(self) -> None:
+    async def async_save(self, *, verify: bool = False) -> None:
         """Save parcels to storage."""
-        await self._store.async_save(
-            {"parcels": {tn: p.to_dict() for tn, p in self._parcels.items()}}
-        )
+        data = {"parcels": {tn: p.to_dict() for tn, p in self._parcels.items()}}
+        await self._store.async_save(data)
+        if verify and await self._store.async_load() != data:
+            raise OSError("Parcel storage verification failed")
 
     def add(self, parcel: ParcelData) -> None:
         """Add a parcel to the store."""

@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components import parcel_tracker
 from custom_components.parcel_tracker import _add_parcel, _handle_webhook
 from custom_components.parcel_tracker.const import (
     CONF_API_KEY,
@@ -166,13 +167,19 @@ async def test_cleanup_removes_entity_registry_entry(hass: HomeAssistant) -> Non
 
 @pytest.mark.integration
 @pytest.mark.parametrize("allow_external", [False, True])
-async def test_webhook_registered(hass: HomeAssistant, allow_external) -> None:
+@pytest.mark.parametrize("push_secret", ["", "ship24-test-secret"])
+async def test_webhook_registered(
+    hass: HomeAssistant, allow_external, push_secret
+) -> None:
     """Test that the integration registers a webhook on setup."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Parcel Tracker",
         data={CONF_API_KEY: "test_key"},
-        options={"webhook_allow_external": allow_external},
+        options={
+            "webhook_allow_external": allow_external,
+            "ship24_webhook_secret": push_secret,
+        },
         unique_id=DOMAIN,
     )
     entry.add_to_hass(hass)
@@ -193,12 +200,16 @@ async def test_webhook_registered(hass: HomeAssistant, allow_external) -> None:
         await hass.async_block_till_done()
 
         original_id = entry.data["webhook_id"]
+        push_id = entry.data["ship24_webhook_id"]
+        assert push_id != original_id
         await hass.config_entries.async_unload(entry.entry_id)
         await hass.async_block_till_done()
         assert original_id not in hass.data["webhook"]
+        assert push_id not in hass.data["webhook"]
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
         assert entry.data["webhook_id"] == original_id
+        assert entry.data["ship24_webhook_id"] == push_id
 
     webhook_id = entry.data["webhook_id"]
     assert len(webhook_id) >= 32
@@ -206,6 +217,9 @@ async def test_webhook_registered(hass: HomeAssistant, allow_external) -> None:
     assert WEBHOOK_ID not in hass.data["webhook"]
     assert hass.data["webhook"][webhook_id]["local_only"] is not allow_external
     assert entry.data[CONF_API_KEY] == "test_key"
+    assert (push_id in hass.data["webhook"]) is bool(push_secret)
+    if push_secret:
+        assert hass.data["webhook"][push_id]["local_only"] is False
 
 
 @pytest.mark.integration
@@ -285,3 +299,149 @@ async def test_webhook_rejects_invalid_payload(hass, body) -> None:
     request.json = AsyncMock(return_value=body)
     with pytest.raises(web.HTTPBadRequest):
         await _handle_webhook(hass, WEBHOOK_ID, request)
+
+
+@pytest.fixture
+def ship24_receiver(hass):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_API_KEY: "test_key", "ship24_webhook_id": "push-id"},
+        options={"ship24_webhook_secret": "ship24-test-secret"},
+    )
+    coordinator = MagicMock()
+    coordinator.entry = entry
+    coordinator.async_process_ship24_updates = AsyncMock()
+    hass.data[DOMAIN] = {entry.entry_id: coordinator}
+    return coordinator
+
+
+def push_request(body, authorization="Bearer ship24-test-secret"):
+    request = MagicMock()
+    request.headers = {"Authorization": authorization}
+    request.json = AsyncMock(return_value=body)
+    return request
+
+
+def push_tracking():
+    return {
+        "tracker": {"trackerId": "tracker-1", "trackingNumber": "TRACK123"},
+        "shipment": {"statusMilestone": "in_transit"},
+        "events": [{"occurrenceDatetime": "2026-11-06T12:00:00+00:00"}],
+    }
+
+
+@pytest.mark.parametrize("authorization", ["", "Bearer wrong", "Basic test"])
+async def test_ship24_webhook_rejects_invalid_secret(
+    hass, ship24_receiver, authorization
+):
+    request = push_request({"trackings": [push_tracking()]}, authorization)
+    response = await parcel_tracker._handle_ship24_webhook(hass, "push-id", request)
+    assert response.status == 401
+    request.json.assert_not_awaited()
+    ship24_receiver.async_process_ship24_updates.assert_not_awaited()
+
+
+async def test_ship24_webhook_accepts_authenticated_batch(hass, ship24_receiver):
+    tracking = push_tracking()
+    request = push_request({"trackings": [tracking]})
+    response = await parcel_tracker._handle_ship24_webhook(hass, "push-id", request)
+    assert response.status == 200
+    ship24_receiver.async_process_ship24_updates.assert_awaited_once_with([tracking])
+
+
+@pytest.mark.parametrize("body", [[], {}, {"trackings": "bad"}, {"trackings": [{}]}])
+async def test_ship24_webhook_rejects_malformed_batch(hass, ship24_receiver, body):
+    response = await parcel_tracker._handle_ship24_webhook(
+        hass, "push-id", push_request(body)
+    )
+    assert response.status == 400
+    ship24_receiver.async_process_ship24_updates.assert_not_awaited()
+
+
+async def test_ship24_webhook_validates_entire_batch_before_applying(
+    hass, ship24_receiver
+):
+    request = push_request({"trackings": [push_tracking(), {}]})
+    response = await parcel_tracker._handle_ship24_webhook(hass, "push-id", request)
+    assert response.status == 400
+    ship24_receiver.async_process_ship24_updates.assert_not_awaited()
+
+
+async def test_ship24_webhook_does_not_accept_registration_endpoint(
+    hass, ship24_receiver
+):
+    response = await parcel_tracker._handle_ship24_webhook(
+        hass, "registration-id", push_request({})
+    )
+    assert response.status == 404
+
+
+async def test_ship24_authentication_status_survives_ha_router(hass, ship24_receiver):
+    from homeassistant.components import webhook
+
+    webhook.async_register(
+        hass,
+        DOMAIN,
+        "Ship24 test",
+        "push-id",
+        parcel_tracker._handle_ship24_webhook,
+        allowed_methods=["POST"],
+        local_only=False,
+    )
+    request = push_request({}, "Bearer wrong")
+    request.method = "POST"
+    response = await webhook.async_handle_webhook(hass, "push-id", request)
+    assert response.status == 401
+    ship24_receiver.async_process_ship24_updates.assert_not_awaited()
+
+
+async def test_ship24_storage_failure_returns_retryable_status(hass, ship24_receiver):
+    ship24_receiver.async_process_ship24_updates.side_effect = OSError(
+        "storage unavailable"
+    )
+    response = await parcel_tracker._handle_ship24_webhook(
+        hass, "push-id", push_request({"trackings": [push_tracking()]})
+    )
+    assert response.status == 503
+
+
+@pytest.mark.parametrize(
+    "authorization, expected_status",
+    [
+        ("Bearer ship24-test-secret", 200),
+        ("Bearer wrong", 401),
+    ],
+)
+async def test_ship24_http_endpoint(
+    hass, ship24_receiver, hass_client, authorization, expected_status
+):
+    from homeassistant.components import webhook
+    from homeassistant.setup import async_setup_component
+
+    await async_setup_component(hass, "webhook", {})
+    webhook.async_register(
+        hass,
+        DOMAIN,
+        "Ship24 test",
+        "push-id",
+        parcel_tracker._handle_ship24_webhook,
+        allowed_methods=["POST"],
+        local_only=False,
+    )
+    client = await hass_client()
+    response = await client.post(
+        "/api/webhook/push-id",
+        json={"trackings": []},
+        headers={"Authorization": authorization},
+    )
+    assert response.status == expected_status
+
+
+async def test_ship24_webhook_rejects_non_numeric_event_order(hass, ship24_receiver):
+    tracking = push_tracking()
+    tracking["events"][0]["order"] = "invalid"
+    response = await parcel_tracker._handle_ship24_webhook(
+        hass, "push-id", push_request({"trackings": [tracking]})
+    )
+    assert response.status == 400
+    ship24_receiver.async_process_ship24_updates.assert_not_awaited()
