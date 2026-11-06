@@ -67,6 +67,24 @@ class TestParseTrackingUrl:
         assert carrier is None
         assert number is None
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://example.org/?redirect=dhl.de&piececode=123456789012",
+            "https://dhl.de.example.org/?piececode=123456789012",
+        ],
+    )
+    def test_rejects_carrier_name_outside_hostname(self, url):
+        assert parse_tracking_url(url) == (None, None)
+
+    def test_reads_named_tracking_parameter(self):
+        url = "https://www.dhl.de/?order=111111111111&piececode=222222222222"
+        assert parse_tracking_url(url) == ("DHL", "222222222222")
+
+    def test_preserves_alphanumeric_tracking_number(self):
+        url = "https://gls-group.eu/DE/de/paketverfolgung?match=Ab12Cd34"
+        assert parse_tracking_url(url) == ("GLS", "Ab12Cd34")
+
 
 @pytest.mark.unit
 class TestBuildTrackingUrl:

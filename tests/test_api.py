@@ -79,8 +79,8 @@ async def test_track_omits_destination_metadata_when_missing(hass) -> None:
 
 
 @pytest.mark.integration
-async def test_track_locks_courier_and_sends_shipping_date(hass) -> None:
-    """Restrict tracking to known courier and include shipping date hint."""
+async def test_track_hints_courier_and_sends_shipping_date(hass) -> None:
+    """Allow carrier handoffs while sending an explicit shipping date."""
     api = Ship24Api(hass, "test_key")
 
     mock_resp = AsyncMock()
@@ -110,7 +110,7 @@ async def test_track_locks_courier_and_sends_shipping_date(hass) -> None:
 
     payload = post.await_args.kwargs["json"]
     assert payload["courierCode"] == ["gls-de"]
-    assert payload["settings"] == {"restrictTrackingToCourierCode": True}
+    assert "settings" not in payload
     assert payload["shippingDate"] == "2026-07-20"
 
 
@@ -143,3 +143,101 @@ async def test_track_omits_settings_and_shipping_date_when_absent(hass) -> None:
     payload = post.await_args.kwargs["json"]
     assert "settings" not in payload
     assert "shippingDate" not in payload
+
+
+@pytest.mark.integration
+async def test_track_forwards_url_name_and_explicit_restriction(hass) -> None:
+    api = Ship24Api(hass, "test_key")
+    response = AsyncMock()
+    response.status = 200
+    response.json.return_value = {"data": {"trackings": []}}
+    with patch.object(
+        api._session, "post", new=AsyncMock(return_value=response)
+    ) as post:
+        await api.track(
+            "TRACK123",
+            courier_code="us-post",
+            courier_name="USPS",
+            tracking_url="https://tools.usps.com/?tLabels=TRACK123",
+            restrict_courier=True,
+        )
+    assert post.await_args.kwargs["json"] == {
+        "trackingNumber": "TRACK123",
+        "courierCode": ["us-post"],
+        "courierName": "USPS",
+        "trackingUrl": "https://tools.usps.com/?tLabels=TRACK123",
+        "settings": {"restrictTrackingToCourierCode": True},
+    }
+
+
+@pytest.mark.integration
+async def test_courier_catalog_is_cached_and_resolves_event_names(hass) -> None:
+    api = Ship24Api(hass, "test_key")
+    catalog_response = AsyncMock()
+    catalog_response.status = 200
+    catalog_response.json.return_value = {
+        "data": {"couriers": [{"courierCode": "us-post", "courierName": "USPS"}]}
+    }
+    tracking_response = AsyncMock()
+    tracking_response.status = 200
+    tracking_response.json.return_value = {
+        "data": {
+            "trackings": [
+                {
+                    "tracker": {"trackerId": "tracker-1", "trackingNumber": "TRACK123"},
+                    "shipment": {"statusMilestone": "available_for_pickup"},
+                    "events": [
+                        {"courierCode": "us-post", "status": "Ready for collection"}
+                    ],
+                }
+            ]
+        }
+    }
+    with (
+        patch.object(
+            api._session, "get", new=AsyncMock(return_value=catalog_response)
+        ) as get,
+        patch.object(
+            api._session, "post", new=AsyncMock(return_value=tracking_response)
+        ),
+    ):
+        first = await api.track("TRACK123")
+        second = await api.track("TRACK123")
+    assert first.courier_name == "USPS"
+    assert second.courier_code == "us-post"
+    assert first.status == "available_for_pickup"
+    get.assert_awaited_once()
+
+
+@pytest.mark.integration
+async def test_get_results_uses_shared_parser_and_catalog(hass) -> None:
+    api = Ship24Api(hass, "test_key")
+    response = AsyncMock()
+    response.status = 200
+    response.json.return_value = {
+        "data": {
+            "trackings": [
+                {
+                    "tracker": {
+                        "trackerId": "tracker-1",
+                        "trackingNumber": "TRACK123",
+                        "courierCode": ["us-post"],
+                    },
+                    "shipment": {"statusMilestone": "in_transit", "delivery": None},
+                    "events": [],
+                }
+            ]
+        }
+    }
+    catalog = AsyncMock()
+    catalog.status = 200
+    catalog.json.return_value = {
+        "data": {"couriers": [{"courierCode": "us-post", "courierName": "USPS"}]}
+    }
+    with patch.object(
+        api._session, "get", new=AsyncMock(side_effect=[response, catalog])
+    ):
+        info = await api.get_results("tracker-1")
+    assert info.tracking_number == "TRACK123"
+    assert info.courier_name == "USPS"
+    assert info.eta is None

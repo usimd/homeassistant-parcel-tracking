@@ -134,6 +134,28 @@ async def test_dhl_api_get_details_no_eta(hass) -> None:
 
 
 @pytest.mark.integration
+async def test_dhl_scan_timestamp_is_not_an_eta(hass) -> None:
+    api = DhlApi(hass, "valid_key")
+    response = AsyncMock()
+    response.status = 200
+    response.json.return_value = {
+        "shipments": [
+            {
+                "status": {
+                    "statusCode": "transit",
+                    "timestamp": "2026-05-08T09:00:00+00:00",
+                },
+                "events": [{"timestamp": "2026-05-08T09:00:00+00:00"}],
+            }
+        ]
+    }
+    with patch.object(api._session, "get", new=AsyncMock(return_value=response)):
+        info = await api.get_details("TRACK123")
+    assert info.eta_date is None
+    assert info.latest_event_time == "2026-05-08T09:00:00+00:00"
+
+
+@pytest.mark.integration
 async def test_dhl_api_get_details_not_found(hass) -> None:
     """Test fetching DHL details for unknown shipment."""
     api = DhlApi(hass, "valid_key")
