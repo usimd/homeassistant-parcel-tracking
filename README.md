@@ -17,342 +17,156 @@
 
 ## Features
 
-- Track parcels across **1500+ carriers** (DHL, DPD, Hermes, GLS, UPS, FedEx, Amazon, etc.) with a single API key
-- Automatic carrier detection from tracking URLs
-- GLS URL detection supports `gls-group.com`, `gls-group.eu`, and `gls-pakete` links with 8-14 character tracking numbers
-- Periodic status polling with configurable interval
-- Deep links to carrier delivery preference pages (Abstellgenehmigung, etc.)
-- Status change events for automations (door opener, notifications)
-- Auto-cleanup of delivered parcels
+- One sensor per parcel, with status, carrier, delivery estimates, and tracking links.
+- Ship24 carrier detection and cached courier-name lookup.
+- Optional direct DHL status updates and delivery time windows.
+- Status-change events for automations and automatic cleanup after delivery.
+- Registration through Home Assistant actions or a private webhook.
 
-## Setup
+## Installation
 
-1. Get a free Ship24 API key (10 shipments/month) at https://dashboard.ship24.com
-2. Install as custom component in Home Assistant
-3. Add integration via UI → enter Ship24 API key
+Requires Home Assistant 2025.10 or newer and a [Ship24 API key](https://dashboard.ship24.com). API quotas and pricing depend on your Ship24 plan.
 
-## Services
+### HACS
 
-### `parcel_tracker.add`
+1. [Install HACS](https://www.hacs.xyz/docs/use/download/download/) if needed.
+2. Open **HACS**, then its menu and **Custom repositories**.
+3. Add `https://github.com/usimd/homeassistant-parcel-tracking` with type **Integration**.
+4. Search for **Parcel Tracker** in HACS and download it.
+5. Restart Home Assistant.
+6. Go to **Settings > Devices & services > Add integration**, select **Parcel Tracker**, and enter your Ship24 API key.
 
-Register a new parcel for tracking.
+### Manual
+
+Copy `custom_components/parcel_tracker` into your Home Assistant configuration's `custom_components` directory, restart Home Assistant, and add the integration as above.
+
+## Configuration
+
+Open **Settings > Devices & services > Parcel Tracker > Configure**.
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| DHL API key | Not set | Optional [DHL Shipment Tracking API](https://developer.dhl.com/api-reference/shipment-tracking) access |
+| Destination country / postal code | Home location, if available | Improve Ship24 matching |
+| Polling interval | 2 hours | Poll Ship24 and optional DHL tracking; configurable from 1 to 12 hours |
+| Cleanup days | 3 | Remove delivered parcels after 1 to 30 days |
+| External registration webhook | Disabled | Allow registration through your external Home Assistant URL |
+
+## Register a Parcel
+
+Use **Developer tools > Actions** or an automation:
 
 ```yaml
-# From tracking URL (carrier auto-detected)
 action: parcel_tracker.add
 data:
   tracking_url: "https://www.dhl.de/de/privatkunden/dhl-sendungsverfolgung.html?piececode=1234567890123456"
-  description: "New keyboard"
-
-# From tracking number
-action: parcel_tracker.add
-data:
-  tracking_number: "1234567890123456"
-  carrier: "DHL"
+  description: "Keyboard"
 ```
 
-### `parcel_tracker.remove`
+URL extraction supports common DHL, DPD, Hermes, GLS, UPS, FedEx, and Amazon Germany links. Ship24 tracking supports many more carriers: provide the tracking number for an unsupported URL. The original URL and optional carrier name are forwarded to Ship24.
+
+```yaml
+action: parcel_tracker.add
+data:
+  tracking_number: "9400111202544843610364"
+  carrier: "USPS"
+  courier_code: "us-post"
+  description: "Replacement part"
+```
+
+`courier_code` is an optional Ship24 code and takes precedence over the carrier name. Carrier names are matched against Ship24's cached catalog when possible. Omit both to let Ship24 detect the carrier.
+
+Optional `shipping_date` must be the actual shipment date in `YYYY-MM-DD` format; leave it out if unknown. `restrict_courier: true` disables tracking through additional carriers, so leave it off for shipments with carrier handoffs. Creation metadata is preserved across retries; existing trackers are reused rather than automatically recreated.
+
+Remove a parcel with:
 
 ```yaml
 action: parcel_tracker.remove
 data:
-  tracking_number: "1234567890123456"
+  tracking_number: "9400111202544843610364"
 ```
 
-## Events
+## Phone Sharing
 
-### `parcel_tracker.parcel_added`
+The integration's **Configure** dialog shows your private `/api/webhook/<random-id>` path. Configure Android [HTTP Shortcuts](https://github.com/Waboodoo/HTTP-Shortcuts) or iOS Shortcuts to POST JSON to that path on your Home Assistant URL:
 
-Fired when a new parcel is registered. Includes the carrier's preference URL for delivery options.
+```json
+{"url": "<tracking-url>", "device": "my-phone", "description": "Keyboard"}
+```
 
-### `parcel_tracker.status_changed`
+The webhook also accepts `tracking_number`, `courier_code`, `carrier`, `shipping_date`, and `restrict_courier`. For unsupported URLs, include `tracking_number`.
 
-Fired on every status transition.
+Keep the URL private: anyone who has it and can reach the endpoint can register parcels. Local network access is enabled by default; enable external access explicitly when needed.
+
+## Sensors and Automations
+
+Each parcel appears under the integration as a sensor. States are `registered`, `in_transit`, `out_for_delivery`, `available_for_pickup`, `delivered`, `failed_attempt`, `exception`, and `unknown`. Ready-for-pickup parcels are not treated as delivered or automatically cleaned up.
+
+Attributes include `tracking_number`, `carrier`, `courier_code`, `description`, `eta`, `eta_timeframe`, `tracking_url`, `preference_url`, `registered_at`, `registered_by`, `last_api_update`, `status_source`, `latest_event_time`, and `latest_event_description`, when available. Carrier preference links are available for the supported URL adapters, not every Ship24 carrier.
+
+- `parcel_tracker.parcel_added` fires on registration.
+- `parcel_tracker.status_changed` fires once per final observed status transition after provider results are merged. Its payload includes `tracking_number`, `carrier`, `courier_code`, `old_status`, `new_status`, `status_source`, `eta`, `tracking_url`, and `preference_url`.
 
 ```yaml
-event_data:
-  tracking_number: "1234567890123456"
-  carrier: "DHL"
-  old_status: "in_transit"
-  new_status: "out_for_delivery"
-  eta: "2026-05-08"
-  preference_url: "https://www.dhl.de/..."
-  tracking_url: "https://www.dhl.de/..."
+alias: Parcel delivered
+triggers:
+  - trigger: event
+    event_type: parcel_tracker.status_changed
+    event_data:
+      new_status: delivered
+actions:
+  - action: notify.mobile_app_your_phone
+    data:
+      message: "{{ trigger.event.data.carrier }} parcel delivered"
 ```
 
 ## Dashboard
 
-The integration creates one sensor entity per tracked parcel. You can view them via **Settings → Devices & Services → Parcel Tracker** or build a Lovelace dashboard card:
+Add parcel sensors to any built-in Entities card, or use this automatic list. It shows the carrier, status, tracking number, and ETA; tapping a row opens the tracking page.
 
-<details>
-<summary><b>Auto-entities card (shows all active parcels)</b></summary>
-
-Requires [auto-entities](https://github.com/thomasloven/lovelace-auto-entities) from HACS:
+Install [auto-entities](https://github.com/thomasloven/lovelace-auto-entities) and [template-entity-row](https://github.com/thomasloven/lovelace-template-entity-row) through HACS, then add a **Manual** dashboard card:
 
 ```yaml
 type: custom:auto-entities
 card:
   type: entities
-  title: 📦 Parcels
+  title: Parcels
   show_header_toggle: false
 filter:
   include:
-    - entity_id: sensor.parcel_*
+    - integration: parcel_tracker
+      domain: sensor
       options:
         type: custom:template-entity-row
         state: "{{ state_attr(config.entity, 'carrier') }}: {{ states(config.entity) | replace('_', ' ') | title }}"
         secondary: >
-          {{ state_attr(config.entity, 'tracking_number')[:12] }}…
-          {% if state_attr(config.entity, 'eta') %} · ETA {{ state_attr(config.entity, 'eta') }}{% endif %}
-        tap_action: |
-          {
-            "action": "url",
-            "url_path": "{{ state_attr(config.entity, 'tracking_url') }}"
-          }
+          {{ state_attr(config.entity, 'tracking_number') }}
+          {% if state_attr(config.entity, 'eta') %}
+            - ETA {{ state_attr(config.entity, 'eta') }}
+          {% endif %}
+        tap_action: >
+          {{ {'action': 'url', 'url_path': state_attr(config.entity, 'tracking_url')} | to_json
+             if state_attr(config.entity, 'tracking_url')
+             else {'action': 'more-info'} | to_json }}
+  exclude:
+    - state: unavailable
 sort:
   method: state
-  reverse: true
 show_empty: false
 ```
 
-</details>
+## Limitations
 
-<details>
-<summary><b>Simple entities card (no extra dependencies)</b></summary>
-
-Manually list your parcel sensors (they appear/disappear as parcels are added/removed):
-
-```yaml
-type: entities
-title: 📦 Parcels
-entities:
-  - type: custom:template-entity-row
-    entity: sensor.parcel_dhl_3456
-    state: "{{ state_attr('sensor.parcel_dhl_3456', 'carrier') }}: {{ states('sensor.parcel_dhl_3456') | replace('_', ' ') | title }}"
-    secondary: "ETA: {{ state_attr('sensor.parcel_dhl_3456', 'eta') }}"
-    tap_action: |
-      {
-        "action": "url",
-        "url_path": "{{ state_attr(config.entity, 'tracking_url') }}"
-      }
-```
-
-Or use the built-in entity filter card for a zero-config list:
-
-```yaml
-type: entity-filter
-entities:
-  - sensor.parcel_dhl_3456
-  - sensor.parcel_dpd_7890
-state_filter:
-  - registered
-  - in_transit
-  - out_for_delivery
-```
-
-</details>
-
-## Example Automations
-
-<details>
-<summary><b>Notify to set delivery preferences (Abstellgenehmigung)</b></summary>
-
-When a new parcel is registered, send a notification with a direct link to set your drop-off preference on the carrier's website:
-
-```yaml
-automation:
-  - alias: "Notify to set delivery drop-off"
-    triggers:
-      - trigger: event
-        event_type: parcel_tracker.parcel_added
-    conditions:
-      - condition: template
-        value_template: "{{ trigger.event.data.preference_url != '' }}"
-    actions:
-      - action: notify.mobile_app_your_phone
-        data:
-          title: "📦 New parcel registered"
-          message: >
-            {{ trigger.event.data.carrier }} parcel added.
-            Set your Abstellgenehmigung now!
-          data:
-            url: "{{ trigger.event.data.preference_url }}"
-            actions:
-              - action: URI
-                title: "Set drop-off location"
-                uri: "{{ trigger.event.data.preference_url }}"
-```
-
-</details>
-
-<details>
-<summary><b>Notify parcel in transit</b></summary>
-
-```yaml
-automation:
-  - alias: "Notify parcel in transit"
-    triggers:
-      - trigger: event
-        event_type: parcel_tracker.status_changed
-        event_data:
-          new_status: in_transit
-    actions:
-      - action: notify.mobile_app_your_phone
-        data:
-          title: "📦 Parcel on the way!"
-          message: "{{ trigger.event.data.carrier }} parcel is in transit (ETA: {{ trigger.event.data.eta }})"
-          data:
-            url: "{{ trigger.event.data.tracking_url }}"
-```
-
-</details>
-
-<details>
-<summary><b>Share tracking links from your phone</b></summary>
-
-The integration registers a webhook automatically — no HA automation needed. Just point your phone's share shortcut at:
-
-```
-POST https://<ha-external-url>/api/webhook/parcel_tracker_register
-```
-
-**JSON body:**
-```json
-{"url": "<tracking-url>", "device": "<phone-name>"}
-```
-
-**Android step-by-step** using [HTTP Shortcuts](https://github.com/Waboodoo/HTTP-Shortcuts) (F-Droid / Play Store):
-
-1. Open the app → tap **+** (bottom-right) → **Regular Shortcut**
-2. **Basic Request Settings**
-   - Name: `Track Parcel`
-   - Method: **POST**
-   - URL: `https://<your-ha-url>/api/webhook/parcel_tracker_register`
-3. **Request Body / Payload**
-   - Tap **Request Body** → select **Custom Text**
-   - Content Type: `application/json`
-   - In the body text field, enter:
-     ```
-     {"url": "{share_text}", "device": "my-pixel"}
-     ```
-     > `{share_text}` is a **built-in variable** — the app replaces it automatically with whatever text is shared. Don't create a variable for it; just type it literally.
-     >
-     > Replace `my-pixel` with whatever name you want to identify this phone.
-4. **Trigger from Share Sheet** (Android 11+)
-   - Go back to the shortcut's main settings screen
-   - Tap **Trigger & Execution Settings** (⚡ icon)
-   - Enable **"Accept shared text from other apps"**
-   - You may need to restart HTTP Shortcuts (or reboot) for Android to register the new share target
-5. **Save** the shortcut (✓ top-right)
-
-**Usage (Android 11+):** Share a tracking link → pick **HTTP Shortcuts** → select **Track Parcel**.
-
-<details>
-<summary><b>Alternative: older Android / home-screen shortcut (no share sheet)</b></summary>
-
-If your device doesn't support the share-into feature (Android < 11), use a dialog variable instead:
-
-1. In HTTP Shortcuts, open **Variables** (drawer menu) → **+** → **Text Input**
-   - Variable key: `tracking_url`
-   - Title: `Tracking URL`
-2. Create the shortcut as above, but use this body:
-   ```
-   {"url": "{tracking_url}", "device": "my-phone"}
-   ```
-3. **Place the shortcut on your home screen** (long-press shortcut → "Place on home screen" / use the widget picker)
-4. To use: copy the tracking link → tap the home-screen shortcut → paste → confirm
-
-</details>
-
-**iOS** — use the built-in Shortcuts app with a "Get Contents of URL" action (POST, same JSON body). Add the shortcut to your Share Sheet.
-
-</details>
-
-<details>
-<summary><b>Open door for parcel delivery</b></summary>
-
-```yaml
-alias: Open door for parcel delivery
-triggers:
-  - entity_id: binary_sensor.doorbell_bell_signal
-    to: "on"
-    trigger: state
-conditions:
-  - condition: template
-    value_template: >
-      {{ states.sensor
-         | selectattr('entity_id', 'match', 'sensor.parcel_.*')
-         | selectattr('state', 'in', ['in_transit', 'out_for_delivery'])
-         | selectattr('attributes.eta', 'eq', now().strftime('%Y-%m-%d'))
-         | list | count > 0 }}
-actions:
-  - action: switch.turn_on
-    target:
-      entity_id: switch.doorbell_door_opener
-```
-
-</details>
-
-## Entity Model
-
-Each tracked parcel becomes a sensor entity:
-
-- **State**: `registered` | `in_transit` | `out_for_delivery` | `delivered` | `failed_attempt` | `exception` | `unknown`
-- **Attributes**: `carrier`, `tracking_number`, `eta`, `registered_by`, `registered_at`, `last_api_update`, `tracking_url`, `preference_url`, `description`
-
-## Configuration Options
-
-Via UI (Settings → Integrations → Parcel Tracker → Configure):
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| Cleanup days | 3 | Days after delivery before auto-removal (1-30) |
-| Scan interval | 2h | How often to poll Ship24 for updates (1-12h) |
-
-## Supported Carriers
-
-<details>
-<summary><b>Carrier preference links</b></summary>
-
-| Carrier | Preference Page |
-|---------|----------------|
-| DHL | Sendungsverfolgung → Empfangsoptionen |
-| DPD | Paketankündigung |
-| Hermes | Sendungsinformation |
-| GLS | FlexDeliveryService |
-| UPS | My Choice |
-| FedEx | Delivery Manager |
-| Amazon | Order History |
-
-</details>
-
-<details>
-<summary><b>URL auto-detection patterns</b></summary>
-
-| Carrier | URL Pattern |
-|---------|-------------|
-| DHL | `dhl.de`, `nolp.dhl.de` |
-| DPD | `dpd.de`, `tracking.dpd` |
-| Hermes | `myhermes.de`, `hermesworld` |
-| GLS | `gls-group.com`, `gls-pakete` |
-| UPS | `ups.com` |
-| FedEx | `fedex.com` |
-| Amazon | `amazon.de/progress-tracker` |
-
-</details>
+- Tracking is polled, not realtime. Ship24's upstream delay remains even if you shorten the polling interval. Ship24 push webhooks are not implemented.
+- Direct DHL results can confirm delivery before Ship24. Other conflicting states use comparable event timestamps when available. Delivered parcels are no longer polled.
+- `last_api_update` records a successful fetch, not the time of the carrier's last scan. Use `latest_event_time` to judge tracking freshness.
+- Dates, delivery estimates, and carrier coverage depend on the upstream provider.
 
 ## Development
 
 ```bash
-# Run tests
-uv run pytest tests/ -v
-
-# Lint
-uv run ruff check . && uv run ruff format --check .
+uv sync --dev
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
 ```
-
-## Dependencies
-
-- Home Assistant 2024.1+
-- Ship24 API key (free plan: https://dashboard.ship24.com)
-- HTTP Shortcuts app on Android phones (for share sheet integration)
