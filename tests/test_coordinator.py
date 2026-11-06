@@ -1,6 +1,7 @@
 """Tests for coordinator destination metadata behavior."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+from asyncio import Event, create_task, gather
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -15,7 +16,7 @@ from custom_components.parcel_tracker.const import (
     STATUS_IN_TRANSIT,
     STATUS_REGISTERED,
 )
-from custom_components.parcel_tracker.api import TrackingInfo
+from custom_components.parcel_tracker.api import Ship24Api, TrackingInfo
 from custom_components.parcel_tracker.coordinator import ParcelTrackerCoordinator
 from custom_components.parcel_tracker.dhl_api import DhlTrackingInfo
 from custom_components.parcel_tracker.store import ParcelData, ParcelStore
@@ -294,3 +295,184 @@ async def test_undated_dhl_status_allows_later_ship24_event(hass) -> None:
     await coordinator._async_update_data()
     assert parcel.status == "out_for_delivery"
     assert parcel.status_source == "ship24"
+
+
+@pytest.fixture
+async def push_coordinator(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_API_KEY: "test_key"})
+    store = ParcelStore(hass)
+    store.add(ParcelData("TRACK123", "Unknown", tracker_id="tracker-1"))
+    store.async_save = AsyncMock()
+    return ParcelTrackerCoordinator(hass, Ship24Api(hass, "test_key"), store, entry)
+
+
+def tracking_update(status, event_time, tracker_id="tracker-1"):
+    return {
+        "tracker": {"trackerId": tracker_id, "trackingNumber": "TRACK123"},
+        "shipment": {"statusMilestone": status},
+        "events": [{"status": status, "occurrenceDatetime": event_time}],
+    }
+
+
+async def test_push_updates_existing_parcel_and_notifies_sensors(push_coordinator):
+    coordinator = push_coordinator
+    parcel = coordinator.store.get("TRACK123")
+    listener = MagicMock()
+    coordinator.async_add_listener(listener)
+    update = tracking_update("delivered", "2026-11-06T12:00:00+00:00")
+    with patch.object(type(coordinator.hass.bus), "async_fire") as fire:
+        await coordinator.async_process_ship24_updates([update])
+    assert parcel.status == STATUS_DELIVERED
+    assert parcel.status_source == "ship24"
+    assert parcel.delivered_at is not None
+    assert coordinator.data["TRACK123"] is parcel
+    coordinator.store.async_save.assert_awaited_once()
+    listener.assert_called_once()
+    event = next(
+        call for call in fire.call_args_list if call.args[0] == EVENT_STATUS_CHANGED
+    )
+    assert event.args[1]["new_status"] == STATUS_DELIVERED
+
+
+async def test_duplicate_and_out_of_order_pushes_do_not_repeat_transitions(
+    push_coordinator,
+):
+    coordinator = push_coordinator
+    newer = tracking_update("out_for_delivery", "2026-11-06T12:00:00+00:00")
+    older = tracking_update("in_transit", "2026-11-06T09:00:00+00:00")
+    with patch.object(type(coordinator.hass.bus), "async_fire") as fire:
+        await coordinator.async_process_ship24_updates([newer])
+        await coordinator.async_process_ship24_updates([newer, older])
+    assert coordinator.store.get("TRACK123").status == "out_for_delivery"
+    events = [
+        call for call in fire.call_args_list if call.args[0] == EVENT_STATUS_CHANGED
+    ]
+    assert len(events) == 1
+
+
+async def test_push_ignores_unknown_tracker_without_registering_parcels(
+    push_coordinator,
+):
+    coordinator = push_coordinator
+    update = tracking_update("delivered", "2026-11-06T12:00:00+00:00", "other-tracker")
+    await coordinator.async_process_ship24_updates([update])
+    assert len(coordinator.store.parcels) == 1
+    assert coordinator.store.get("TRACK123").status == STATUS_REGISTERED
+    coordinator.store.async_save.assert_not_awaited()
+
+
+async def test_push_does_not_make_outbound_provider_requests(push_coordinator):
+    coordinator = push_coordinator
+    update = tracking_update("in_transit", "2026-11-06T12:00:00+00:00")
+    update["events"][0]["courierCode"] = "us-post"
+    with patch.object(coordinator.api._session, "get", new=AsyncMock()) as get:
+        await coordinator.async_process_ship24_updates([update])
+    get.assert_not_awaited()
+    assert coordinator.store.get("TRACK123").courier_code == "us-post"
+
+
+async def test_failed_push_save_can_be_retried_without_losing_transition(
+    push_coordinator,
+):
+    coordinator = push_coordinator
+    coordinator.store.async_save.side_effect = [OSError("storage unavailable"), None]
+    update = tracking_update("delivered", "2026-11-06T12:00:00+00:00")
+    with patch.object(type(coordinator.hass.bus), "async_fire") as fire:
+        with pytest.raises(OSError):
+            await coordinator.async_process_ship24_updates([update])
+        assert coordinator.store.get("TRACK123").status == STATUS_REGISTERED
+        fire.assert_not_called()
+        await coordinator.async_process_ship24_updates([update])
+    assert coordinator.store.get("TRACK123").status == STATUS_DELIVERED
+    events = [
+        call for call in fire.call_args_list if call.args[0] == EVENT_STATUS_CHANGED
+    ]
+    assert len(events) == 1
+
+
+async def test_push_preserves_periodic_reconciliation_schedule(push_coordinator):
+    coordinator = push_coordinator
+    coordinator.async_add_listener(MagicMock())
+    scheduled_poll = coordinator._unsub_refresh
+    assert scheduled_poll is not None
+    await coordinator.async_process_ship24_updates(
+        [tracking_update("in_transit", "2026-11-06T12:00:00+00:00")]
+    )
+    assert coordinator._unsub_refresh is scheduled_poll
+
+
+async def test_push_waits_for_inflight_poll(push_coordinator):
+    coordinator = push_coordinator
+    poll_started = Event()
+    release_poll = Event()
+    push_started = Event()
+
+    async def delayed_results(tracker_id):
+        poll_started.set()
+        await release_poll.wait()
+        return TrackingInfo(
+            "TRACK123",
+            tracker_id,
+            STATUS_IN_TRANSIT,
+            None,
+            None,
+            None,
+            "2026-11-06T09:00:00+00:00",
+            "In transit",
+        )
+
+    async def deliver_push():
+        push_started.set()
+        await coordinator.async_process_ship24_updates(
+            [tracking_update("delivered", "2026-11-06T12:00:00+00:00")]
+        )
+
+    with patch.object(coordinator.api, "get_results", new=delayed_results):
+        poll = create_task(coordinator._async_update_data())
+        await poll_started.wait()
+        push = create_task(deliver_push())
+        try:
+            await push_started.wait()
+            assert coordinator.store.get("TRACK123").status == STATUS_REGISTERED
+        finally:
+            release_poll.set()
+            await gather(poll, push)
+    assert coordinator.store.get("TRACK123").status == STATUS_DELIVERED
+
+
+async def test_stale_push_cannot_replace_current_courier(push_coordinator):
+    coordinator = push_coordinator
+    current = tracking_update("out_for_delivery", "2026-11-06T12:00:00+00:00")
+    current["events"][0]["courierCode"] = "dhl-germany"
+    stale = tracking_update("in_transit", "2026-11-06T09:00:00+00:00")
+    stale["events"][0]["courierCode"] = "us-post"
+    await coordinator.async_process_ship24_updates([current, stale])
+    assert coordinator.store.get("TRACK123").courier_code == "dhl-germany"
+
+
+async def test_equal_timestamp_push_uses_event_order(push_coordinator):
+    coordinator = push_coordinator
+    newer = tracking_update("out_for_delivery", "2026-11-06T12:00:00+00:00")
+    newer["events"][0]["order"] = 2
+    older = tracking_update("in_transit", "2026-11-06T12:00:00+00:00")
+    older["events"][0]["order"] = 1
+    with patch.object(type(coordinator.hass.bus), "async_fire") as fire:
+        await coordinator.async_process_ship24_updates([newer])
+        await coordinator.async_process_ship24_updates([older])
+    assert coordinator.store.get("TRACK123").status == "out_for_delivery"
+    events = [
+        call for call in fire.call_args_list if call.args[0] == EVENT_STATUS_CHANGED
+    ]
+    assert len(events) == 1
+
+
+async def test_push_state_survives_verified_storage_roundtrip(push_coordinator):
+    coordinator = push_coordinator
+    coordinator.store.async_save = ParcelStore.async_save.__get__(coordinator.store)
+    update = tracking_update("out_for_delivery", "2026-11-06T12:00:00+00:00")
+    update["events"][0]["order"] = 2
+    await coordinator.async_process_ship24_updates([update])
+    restored = ParcelStore(coordinator.hass)
+    await restored.async_load()
+    assert restored.get("TRACK123").status == "out_for_delivery"
+    assert restored.get("TRACK123").latest_event_order == 2

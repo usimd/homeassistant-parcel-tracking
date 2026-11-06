@@ -34,6 +34,7 @@ class TrackingInfo:
     eta: str | None
     latest_event_time: str | None
     latest_event_description: str | None
+    latest_event_order: int | None = None
 
 
 class Ship24Api:
@@ -179,7 +180,16 @@ class Ship24Api:
         trackings = (data.get("data") or {}).get("trackings") or []
         if not trackings:
             return None
-        tracking = trackings[0]
+        return await self.parse_tracking(trackings[0], tracking_number)
+
+    async def parse_tracking(
+        self,
+        tracking: dict,
+        tracking_number: str | None = None,
+        *,
+        use_cached_couriers: bool = False,
+    ) -> TrackingInfo:
+        """Normalize a polling or webhook observation without unnecessary lookups."""
         tracker = tracking.get("tracker") or {}
         shipment = tracking.get("shipment") or {}
         events = tracking.get("events") or []
@@ -190,7 +200,9 @@ class Ship24Api:
         courier_code = latest_event.get("courierCode") or (codes[0] if codes else None)
         courier_name = None
         if courier_code:
-            couriers = await self.get_couriers()
+            couriers = (
+                self._couriers if use_cached_couriers else await self.get_couriers()
+            )
             courier_name = couriers.get(courier_code, {}).get("courierName")
         courier_name = courier_name or tracker.get("courierName")
         delivery = shipment.get("delivery") or {}
@@ -209,4 +221,5 @@ class Ship24Api:
             eta=eta,
             latest_event_time=latest_event.get("occurrenceDatetime"),
             latest_event_description=latest_event.get("status"),
+            latest_event_order=latest_event.get("order"),
         )

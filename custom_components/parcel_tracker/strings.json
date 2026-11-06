@@ -21,14 +21,15 @@
     "step": {
       "init": {
         "title": "Parcel Tracker Options",
-        "description": "Registration webhook: `{webhook_path}`. Keep this address private. External access is disabled by default.",
+        "description": "Phone registration webhook: `{webhook_path}`. External registration access is disabled by default.\n\nShip24 tracking webhook: `{ship24_webhook_path}`. To enable push updates, enter your Ship24 webhook secret below and configure this path on your external HTTPS Home Assistant URL in the Ship24 dashboard. Keep both URLs private.",
         "data": {
           "dhl_api_key": "DHL API Key (optional)",
           "destination_country_code": "Destination country code override (optional)",
           "destination_post_code": "Destination post code override (optional)",
           "cleanup_days": "Days after delivery before auto-removal",
           "scan_interval_hours": "Polling interval (hours)",
-          "webhook_allow_external": "Allow external registration webhook requests"
+          "webhook_allow_external": "Allow external registration webhook requests",
+          "ship24_webhook_secret": "Ship24 webhook secret (optional)"
         },
         "data_description": {
           "dhl_api_key": "Optional. Provides direct status updates and delivery estimates for DHL parcels. Get a key at https://developer.dhl.com",
@@ -36,7 +37,8 @@
           "destination_post_code": "Optional recipient post code/ZIP. If set, this overrides Home location postal code.",
           "cleanup_days": "Number of days after a parcel is delivered before it is automatically removed (1-30)",
           "scan_interval_hours": "How often to poll Ship24 and optional DHL tracking (1-12 hours)",
-          "webhook_allow_external": "Enable only when phone shortcuts need access through an external Home Assistant URL. Anyone with the webhook URL can register parcels."
+          "webhook_allow_external": "Enable only when phone shortcuts need access through an external Home Assistant URL. Anyone with the webhook URL can register parcels.",
+          "ship24_webhook_secret": "Use the secret allocated in the Ship24 webhook dashboard, not your API key. A nonempty secret enables the public tracking receiver; clear it to disable push updates. Polling remains enabled."
         }
       }
     },

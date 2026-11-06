@@ -20,6 +20,7 @@
 - One sensor per parcel, with status, carrier, delivery estimates, and tracking links.
 - Ship24 carrier detection and cached courier-name lookup.
 - Optional direct DHL status updates and delivery time windows.
+- Optional authenticated Ship24 push updates, with periodic polling as a fallback.
 - Status-change events for automations and automatic cleanup after delivery.
 - Registration through Home Assistant actions or a private webhook.
 
@@ -51,6 +52,7 @@ Open **Settings > Devices & services > Parcel Tracker > Configure**.
 | Polling interval | 2 hours | Poll Ship24 and optional DHL tracking; configurable from 1 to 12 hours |
 | Cleanup days | 3 | Remove delivered parcels after 1 to 30 days |
 | External registration webhook | Disabled | Allow registration through your external Home Assistant URL |
+| Ship24 webhook secret | Not set | Enable the separate public receiver for authenticated tracking updates |
 
 ## Register a Parcel
 
@@ -97,6 +99,20 @@ The integration's **Configure** dialog shows your private `/api/webhook/<random-
 The webhook also accepts `tracking_number`, `courier_code`, `carrier`, `shipping_date`, and `restrict_courier`. For unsupported URLs, include `tracking_number`.
 
 Keep the URL private: anyone who has it and can reach the endpoint can register parcels. Local network access is enabled by default; enable external access explicitly when needed.
+
+## Ship24 Push Updates
+
+Push updates are optional and included in Ship24's free Tracking API plan. They remove the integration's polling delay after Ship24 discovers an event, not Ship24's upstream delay.
+
+1. Make Home Assistant reachable through an external **HTTPS** URL.
+2. Open **Parcel Tracker > Configure** and find the **Ship24 tracking webhook** path. This is different from the phone registration path.
+3. In the [Ship24 webhook dashboard](https://dashboard.ship24.com/integrations/webhook/), set the tracking webhook URL to your external Home Assistant URL followed by that path.
+4. Enter the webhook secret allocated by Ship24 in the integration's **Ship24 webhook secret** option and save. This secret is not your Ship24 API key.
+5. Use Ship24's dashboard test to check delivery. Unknown or example tracker IDs are acknowledged but do not register parcels.
+
+The tracking receiver checks Ship24's `Authorization: Bearer <secret>` header before processing a batch. If you use a reverse proxy, ensure that header reaches Home Assistant. The receiver only updates existing tracker IDs; it never creates parcels.
+
+Polling continues at the configured interval to reconcile missed pushes, and direct DHL polling is unchanged. Incoming pushes do not postpone that schedule. Clear the Ship24 webhook secret to disable the receiver and return to polling-only operation. Phone registration can remain local-only even while Ship24 push is enabled.
 
 ## Sensors and Automations
 
@@ -157,9 +173,9 @@ show_empty: false
 
 ## Limitations
 
-- Tracking is polled, not realtime. Ship24's upstream delay remains even if you shorten the polling interval. Ship24 push webhooks are not implemented.
+- Without push configured, updates arrive through polling. With push enabled, Ship24's own upstream delay still applies; this does not force faster courier refreshes.
 - Direct DHL results can confirm delivery before Ship24. Other conflicting states use comparable event timestamps when available. Delivered parcels are no longer polled.
-- `last_api_update` records a successful fetch, not the time of the carrier's last scan. Use `latest_event_time` to judge tracking freshness.
+- `last_api_update` records a successful fetch or accepted push update, not the time of the carrier's last scan. Use `latest_event_time` to judge tracking freshness.
 - Dates, delivery estimates, and carrier coverage depend on the upstream provider.
 
 ## Development

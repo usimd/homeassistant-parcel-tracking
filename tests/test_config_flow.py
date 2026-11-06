@@ -144,6 +144,33 @@ async def test_options_flow(hass: HomeAssistant) -> None:
     assert result["data"]["webhook_allow_external"] is True
 
 
+async def test_ship24_push_options_expose_path_and_store_secret(hass):
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_API_KEY: "test_key", "ship24_webhook_id": "push-id"},
+        unique_id=DOMAIN,
+    )
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert "ship24_webhook_secret" in result["data_schema"].schema
+    assert (
+        result["description_placeholders"]["ship24_webhook_path"]
+        == "/api/webhook/push-id"
+    )
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            "ship24_webhook_secret": "ship24-test-secret",
+            CONF_SCAN_INTERVAL_HOURS: 6,
+            CONF_CLEANUP_DAYS: 3,
+        },
+    )
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"]["ship24_webhook_secret"] == "ship24-test-secret"
+
+
 @pytest.mark.integration
 async def test_options_flow_with_dhl_key(hass: HomeAssistant) -> None:
     """Test the options flow with a valid DHL API key."""

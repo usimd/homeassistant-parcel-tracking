@@ -13,6 +13,8 @@ CONF_DESTINATION_COUNTRY_CODE: Final = "destination_country_code"
 CONF_DESTINATION_POST_CODE: Final = "destination_post_code"
 CONF_WEBHOOK_ID: Final = "webhook_id"
 CONF_WEBHOOK_ALLOW_EXTERNAL: Final = "webhook_allow_external"
+CONF_SHIP24_WEBHOOK_ID: Final = "ship24_webhook_id"
+CONF_SHIP24_WEBHOOK_SECRET: Final = "ship24_webhook_secret"
 
 # Defaults
 DEFAULT_CLEANUP_DAYS: Final = 3
