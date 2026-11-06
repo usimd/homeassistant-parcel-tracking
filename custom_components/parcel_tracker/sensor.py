@@ -12,6 +12,10 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     ATTR_CARRIER,
+    ATTR_COURIER_CODE,
+    ATTR_STATUS_SOURCE,
+    ATTR_LATEST_EVENT_TIME,
+    ATTR_LATEST_EVENT_DESCRIPTION,
     ATTR_DESCRIPTION,
     ATTR_ETA,
     ATTR_ETA_TIMEFRAME,
@@ -21,13 +25,13 @@ from .const import (
     ATTR_REGISTERED_BY,
     ATTR_TRACKING_NUMBER,
     ATTR_TRACKING_URL,
-    CARRIER_PREFERENCE_URLS,
     DOMAIN,
     SIGNAL_NEW_PARCEL,
     SIGNAL_REMOVE_PARCEL,
 )
 from .coordinator import ParcelTrackerCoordinator
 from .store import ParcelData
+from .url_parser import build_preference_url, build_tracking_url
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -132,6 +136,15 @@ class ParcelSensor(CoordinatorEntity[ParcelTrackerCoordinator], SensorEntity):
             ATTR_TRACKING_NUMBER: parcel.tracking_number,
             ATTR_REGISTERED_AT: parcel.registered_at,
         }
+        for attribute in (
+            ATTR_COURIER_CODE,
+            ATTR_STATUS_SOURCE,
+            ATTR_LATEST_EVENT_TIME,
+            ATTR_LATEST_EVENT_DESCRIPTION,
+        ):
+            value = getattr(parcel, attribute)
+            if value:
+                attrs[attribute] = value
         if parcel.eta:
             attrs[ATTR_ETA] = parcel.eta
         elif self.hass:
@@ -146,14 +159,17 @@ class ParcelSensor(CoordinatorEntity[ParcelTrackerCoordinator], SensorEntity):
             attrs[ATTR_REGISTERED_BY] = parcel.registered_by
         if parcel.last_api_update:
             attrs[ATTR_LAST_API_UPDATE] = parcel.last_api_update
-        if parcel.tracking_url:
-            attrs[ATTR_TRACKING_URL] = parcel.tracking_url
+        tracking_url = parcel.tracking_url or build_tracking_url(
+            parcel.carrier, parcel.tracking_number, parcel.courier_code
+        )
+        if tracking_url:
+            attrs[ATTR_TRACKING_URL] = tracking_url
         if parcel.description:
             attrs[ATTR_DESCRIPTION] = parcel.description
 
         # Deep link to carrier delivery preferences
-        pref_url = CARRIER_PREFERENCE_URLS.get(parcel.carrier, "").format(
-            tracking_number=parcel.tracking_number
+        pref_url = build_preference_url(
+            parcel.carrier, parcel.tracking_number, parcel.courier_code
         )
         if pref_url:
             attrs[ATTR_PREFERENCE_URL] = pref_url

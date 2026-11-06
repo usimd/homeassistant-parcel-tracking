@@ -54,3 +54,25 @@ async def test_extra_state_attributes_use_parcel_eta_when_available(hass) -> Non
     attrs = sensor.extra_state_attributes
 
     assert attrs[ATTR_ETA] == "2026-07-13"
+
+
+async def test_attributes_expose_source_and_resolve_links_by_code(hass) -> None:
+    parcel = ParcelData(
+        "TRACK123",
+        "DHL Germany",
+        courier_code="dhl-germany",
+        status_source="dhl",
+        latest_event_time="2026-05-08T10:00:00+00:00",
+        latest_event_description="Delivered",
+    )
+    coordinator = MagicMock()
+    coordinator.store.get.return_value = parcel
+    sensor = ParcelSensor(coordinator, MockConfigEntry(domain=DOMAIN), "TRACK123")
+    sensor.hass = hass
+    attributes = sensor.extra_state_attributes
+    assert attributes["courier_code"] == "dhl-germany"
+    assert attributes["status_source"] == "dhl"
+    assert attributes["latest_event_time"] == parcel.latest_event_time
+    assert attributes["latest_event_description"] == "Delivered"
+    assert "dhl.de" in attributes["preference_url"]
+    assert "dhl.de" in attributes["tracking_url"]

@@ -28,6 +28,13 @@ class ParcelData:
     tracking_url: str | None = None
     delivered_at: str | None = None
     tracker_id: str | None = None
+    courier_code: str | None = None
+    shipping_date: str | None = None
+    restrict_courier: bool = False
+    tracking_request: dict | None = None
+    status_source: str | None = None
+    latest_event_time: str | None = None
+    latest_event_description: str | None = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for storage."""

@@ -11,6 +11,8 @@ CONF_CLEANUP_DAYS: Final = "cleanup_days"
 CONF_SCAN_INTERVAL_HOURS: Final = "scan_interval_hours"
 CONF_DESTINATION_COUNTRY_CODE: Final = "destination_country_code"
 CONF_DESTINATION_POST_CODE: Final = "destination_post_code"
+CONF_WEBHOOK_ID: Final = "webhook_id"
+CONF_WEBHOOK_ALLOW_EXTERNAL: Final = "webhook_allow_external"
 
 # Defaults
 DEFAULT_CLEANUP_DAYS: Final = 3
@@ -24,12 +26,18 @@ SERVICE_REMOVE: Final = "remove"
 ATTR_TRACKING_NUMBER: Final = "tracking_number"
 ATTR_TRACKING_URL: Final = "tracking_url"
 ATTR_CARRIER: Final = "carrier"
+ATTR_COURIER_CODE: Final = "courier_code"
+ATTR_SHIPPING_DATE: Final = "shipping_date"
+ATTR_RESTRICT_COURIER: Final = "restrict_courier"
 ATTR_DESCRIPTION: Final = "description"
 ATTR_REGISTERED_BY: Final = "registered_by"
 ATTR_REGISTERED_AT: Final = "registered_at"
 ATTR_ETA: Final = "eta"
 ATTR_ETA_TIMEFRAME: Final = "eta_timeframe"
 ATTR_LAST_API_UPDATE: Final = "last_api_update"
+ATTR_STATUS_SOURCE: Final = "status_source"
+ATTR_LATEST_EVENT_TIME: Final = "latest_event_time"
+ATTR_LATEST_EVENT_DESCRIPTION: Final = "latest_event_description"
 ATTR_STATUS: Final = "status"
 ATTR_PREFERENCE_URL: Final = "preference_url"
 
@@ -54,6 +62,7 @@ STATUS_IN_TRANSIT: Final = "in_transit"
 STATUS_OUT_FOR_DELIVERY: Final = "out_for_delivery"
 STATUS_DELIVERED: Final = "delivered"
 STATUS_FAILED_ATTEMPT: Final = "failed_attempt"
+STATUS_AVAILABLE_FOR_PICKUP: Final = "available_for_pickup"
 STATUS_EXCEPTION: Final = "exception"
 STATUS_UNKNOWN: Final = "unknown"
 
@@ -64,7 +73,7 @@ SHIP24_STATUS_MAP: Final = {
     "in_transit": STATUS_IN_TRANSIT,
     "out_for_delivery": STATUS_OUT_FOR_DELIVERY,
     "failed_attempt": STATUS_FAILED_ATTEMPT,
-    "available_for_pickup": STATUS_DELIVERED,
+    "available_for_pickup": STATUS_AVAILABLE_FOR_PICKUP,
     "delivered": STATUS_DELIVERED,
     "exception": STATUS_EXCEPTION,
 }
@@ -94,11 +103,23 @@ CARRIER_TRACKING_URLS: Final = {
 # URL patterns for carrier auto-detection.
 # Tuple: (url_domain_pattern, tracking_number_pattern, ship24_courier_code)
 CARRIER_URL_PATTERNS: Final = {
-    "DHL": (r"dhl\.de|nolp\.dhl\.de", r"[0-9]{12,20}", "dhl-group"),
-    "DPD": (r"dpd\.de|tracking\.dpd", r"[0-9]{14}", "dpd"),
-    "Hermes": (r"myhermes\.de|hermesworld", r"[0-9]{14,16}", "hermes"),
-    "GLS": (r"gls-group\.(?:com|eu)|gls-pakete", r"[A-Z0-9]{8,14}", "gls"),
-    "UPS": (r"ups\.com", r"1Z[A-Z0-9]{16}", "ups"),
-    "FedEx": (r"fedex\.com", r"[0-9]{12,22}", "fedex"),
-    "Amazon": (r"amazon\.de/progress-tracker", r"[A-Z0-9]{12,}", "amazon"),
+    "DHL": (r"(?:[a-z0-9-]+\.)*dhl\.de", r"[0-9]{12,20}", "dhl-group"),
+    "DPD": (r"(?:[a-z0-9-]+\.)*dpd\.(?:de|com)", r"[0-9]{14}", "dpd"),
+    "Hermes": (
+        r"(?:[a-z0-9-]+\.)*(?:myhermes\.de|hermesworld\.com)",
+        r"[0-9]{14,16}",
+        "hermes",
+    ),
+    "GLS": (
+        r"(?:[a-z0-9-]+\.)*(?:gls-group\.(?:com|eu)|gls-pakete\.de)",
+        r"[A-Z0-9]{8,14}",
+        "gls",
+    ),
+    "UPS": (r"(?:[a-z0-9-]+\.)*ups\.com", r"1Z[A-Z0-9]{16}", "ups"),
+    "FedEx": (r"(?:[a-z0-9-]+\.)*fedex\.com", r"[0-9]{12,22}", "fedex"),
+    "Amazon": (r"(?:[a-z0-9-]+\.)*amazon\.de", r"[A-Z0-9]{12,}", "amazon"),
 }
+
+CARRIER_CODE_ALIASES: Final = {
+    pattern[2]: name for name, pattern in CARRIER_URL_PATTERNS.items()
+} | dict.fromkeys(("dhl", "dhl-germany", "dhl-express"), "DHL")

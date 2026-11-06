@@ -132,6 +132,7 @@ async def test_options_flow(hass: HomeAssistant) -> None:
             CONF_SCAN_INTERVAL_HOURS: 4,
             CONF_DESTINATION_COUNTRY_CODE: "DE",
             CONF_DESTINATION_POST_CODE: "80331",
+            "webhook_allow_external": True,
         },
     )
 
@@ -140,6 +141,7 @@ async def test_options_flow(hass: HomeAssistant) -> None:
     assert result["data"][CONF_SCAN_INTERVAL_HOURS] == 4
     assert result["data"][CONF_DESTINATION_COUNTRY_CODE] == "DE"
     assert result["data"][CONF_DESTINATION_POST_CODE] == "80331"
+    assert result["data"]["webhook_allow_external"] is True
 
 
 @pytest.mark.integration

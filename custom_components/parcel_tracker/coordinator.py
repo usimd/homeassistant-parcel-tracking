@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import Ship24Api
 from .const import (
@@ -24,11 +25,14 @@ from .const import (
     EVENT_STATUS_CHANGED,
     SIGNAL_REMOVE_PARCEL,
     STATUS_DELIVERED,
-    STATUS_OUT_FOR_DELIVERY,
+    STATUS_IN_TRANSIT,
+    STATUS_EXCEPTION,
     STATUS_REGISTERED,
+    STATUS_UNKNOWN,
 )
 from .dhl_api import DhlApi, is_dhl_parcel
 from .store import ParcelData, ParcelStore
+from .url_parser import build_preference_url, build_tracking_url
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,105 +71,108 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
     async def _async_update_data(self) -> dict[str, ParcelData]:
         """Fetch tracking data from Ship24 API."""
         try:
-            now_iso = datetime.now().isoformat()
+            now_iso = dt_util.utcnow().isoformat()
+            old_statuses = {
+                tn: parcel.status for tn, parcel in self.store.parcels.items()
+            }
             destination_country_code, destination_post_code = (
                 self._get_home_destination_metadata()
             )
 
             for tn, parcel in list(self.store.parcels.items()):
-                # If the parcel is still registered with no events, clear the
-                # tracker_id so the next call re-creates the tracker with a
-                # courier code hint — this recovers stuck Ship24 auto-detection.
-                if (
-                    parcel.tracker_id
-                    and parcel.status == STATUS_REGISTERED
-                    and parcel.carrier in CARRIER_URL_PATTERNS
-                ):
-                    _LOGGER.debug(
-                        "Parcel %s stuck on registered with known carrier %s — "
-                        "retrying track() with courier hint",
-                        tn,
-                        parcel.carrier,
-                    )
-                    parcel.tracker_id = None
+                if parcel.status == STATUS_DELIVERED:
+                    continue
 
-                # Use stored tracker_id for subsequent calls (faster)
                 if parcel.tracker_id:
                     info = await self.api.get_results(parcel.tracker_id)
                 else:
-                    courier_hint = (
-                        CARRIER_URL_PATTERNS[parcel.carrier][2]
-                        if parcel.carrier in CARRIER_URL_PATTERNS
-                        else None
-                    )
-                    # Derive a date-only shipping-date hint from when the parcel
-                    # was registered — improves Ship24 matching for couriers that
-                    # reuse tracking numbers (DPD, GLS, Hermes).
-                    shipping_date: str | None = None
-                    if parcel.registered_at:
-                        try:
-                            shipping_date = (
-                                datetime.fromisoformat(parcel.registered_at)
-                                .date()
-                                .isoformat()
-                            )
-                        except ValueError:
-                            shipping_date = None
-                    info = await self.api.track(
-                        tn,
-                        courier_hint,
-                        destination_country_code=destination_country_code,
-                        destination_post_code=destination_post_code,
-                        shipping_date=shipping_date,
-                    )
+                    if parcel.tracking_request is None:
+                        courier_hint = parcel.courier_code
+                        if not courier_hint and parcel.carrier in CARRIER_URL_PATTERNS:
+                            courier_hint = CARRIER_URL_PATTERNS[parcel.carrier][2]
+                        elif not courier_hint and parcel.carrier != "Unknown":
+                            couriers = await self.api.get_couriers()
+                            for code, courier in couriers.items():
+                                if parcel.carrier.casefold() in (
+                                    code.casefold(),
+                                    (courier.get("courierName") or "").casefold(),
+                                ):
+                                    courier_hint = code
+                                    break
+                        parcel.tracking_request = {
+                            "tracking_number": tn,
+                            "courier_code": courier_hint,
+                            "courier_name": parcel.carrier
+                            if parcel.carrier != "Unknown"
+                            else None,
+                            "tracking_url": parcel.tracking_url,
+                            "destination_country_code": destination_country_code,
+                            "destination_post_code": destination_post_code,
+                            "shipping_date": parcel.shipping_date,
+                            "restrict_courier": parcel.restrict_courier,
+                        }
+                        await self.store.async_save()
+                    info = await self.api.track(**parcel.tracking_request)
 
                 if info is None:
                     continue
 
-                # Store tracker_id for future lookups
                 if info.tracker_id and not parcel.tracker_id:
                     parcel.tracker_id = info.tracker_id
 
-                old_status = parcel.status
-
-                # Update parcel data from API
-                parcel.status = info.status
                 parcel.last_api_update = now_iso
-
-                if info.eta:
-                    parcel.eta = info.eta
-
-                # Update carrier from API detection if we didn't know it
-                if info.courier_name and parcel.carrier == "Unknown":
+                if info.courier_code:
+                    parcel.courier_code = info.courier_code
+                if info.courier_name:
                     parcel.carrier = info.courier_name
+                if not parcel.tracking_url:
+                    parcel.tracking_url = build_tracking_url(
+                        parcel.carrier, tn, parcel.courier_code
+                    )
+                comparison = self._compare_event_times(
+                    info.latest_event_time, parcel.latest_event_time
+                )
+                if info.status != STATUS_UNKNOWN and (
+                    info.status == STATUS_DELIVERED
+                    or (
+                        comparison != -1
+                        and (
+                            parcel.status_source != "dhl"
+                            or comparison == 1
+                            or (not parcel.latest_event_time and info.latest_event_time)
+                        )
+                    )
+                ):
+                    parcel.status = info.status
+                    parcel.status_source = "ship24"
+                    parcel.latest_event_time = info.latest_event_time
+                    parcel.latest_event_description = info.latest_event_description
+                    if info.eta:
+                        parcel.eta = info.eta
 
-                # Track when parcel was delivered
-                if info.status == STATUS_DELIVERED and parcel.delivered_at is None:
+            await self._enrich_dhl_parcels()
+
+            for tn, parcel in list(self.store.parcels.items()):
+                if parcel.status == STATUS_DELIVERED and parcel.delivered_at is None:
                     parcel.delivered_at = now_iso
-
-                # Fire event on status change
-                if old_status != info.status:
-                    from .const import CARRIER_PREFERENCE_URLS
-
-                    preference_url = CARRIER_PREFERENCE_URLS.get(
-                        parcel.carrier, ""
-                    ).format(tracking_number=tn)
-
+                old_status = old_statuses.get(tn, parcel.status)
+                if old_status != parcel.status:
                     self.hass.bus.async_fire(
                         EVENT_STATUS_CHANGED,
                         {
                             "tracking_number": tn,
                             "carrier": parcel.carrier,
+                            "courier_code": parcel.courier_code,
                             "old_status": old_status,
-                            "new_status": info.status,
+                            "new_status": parcel.status,
+                            "status_source": parcel.status_source,
                             "eta": parcel.eta,
-                            "preference_url": preference_url,
+                            "preference_url": build_preference_url(
+                                parcel.carrier, tn, parcel.courier_code
+                            ),
                             "tracking_url": parcel.tracking_url or "",
                         },
                     )
-
-            # Enrich DHL parcels with delivery time window
-            await self._enrich_dhl_parcels()
 
             # Auto-cleanup delivered parcels
             await self._cleanup_delivered_parcels()
@@ -227,40 +234,46 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
         return country, postal_code
 
     async def _enrich_dhl_parcels(self) -> None:
-        """Enrich DHL parcels with delivery time window and status from DHL API.
-
-        DHL API is often more current than Ship24. If DHL shows delivered
-        but Ship24 is stuck at out_for_delivery, trust DHL.
-        """
+        """Merge direct DHL status and delivery estimates before emitting events."""
         if not self.dhl_api:
             return
 
         for tn, parcel in list(self.store.parcels.items()):
             if parcel.status == STATUS_DELIVERED:
                 continue
-            if not is_dhl_parcel(parcel.carrier):
+            if not is_dhl_parcel(parcel.carrier, parcel.courier_code):
                 continue
 
             dhl_info = await self.dhl_api.get_details(tn)
             if dhl_info is None:
                 continue
 
-            # If DHL shows delivered but Ship24 shows out_for_delivery,
-            # upgrade to delivered (DHL is usually more current)
-            if (
-                dhl_info.status_code == "delivered"
-                and parcel.status == STATUS_OUT_FOR_DELIVERY
-            ):
-                _LOGGER.info(
-                    "DHL shows delivered for %s, upgrading from out_for_delivery",
-                    tn,
+            parcel.last_api_update = dt_util.utcnow().isoformat()
+            status = {
+                "pre-transit": STATUS_REGISTERED,
+                "transit": STATUS_IN_TRANSIT,
+                "delivered": STATUS_DELIVERED,
+                "failure": STATUS_EXCEPTION,
+            }.get(dhl_info.status_code or "")
+            comparison = self._compare_event_times(
+                dhl_info.latest_event_time, parcel.latest_event_time
+            )
+            if status is not None and (
+                status == STATUS_DELIVERED
+                or (
+                    comparison != -1
+                    and (
+                        comparison == 1
+                        or parcel.status in (STATUS_REGISTERED, STATUS_UNKNOWN)
+                    )
                 )
-                parcel.status = STATUS_DELIVERED
-                if parcel.delivered_at is None:
-                    parcel.delivered_at = datetime.now().isoformat()
+            ):
+                parcel.status = status
+                parcel.status_source = "dhl"
+                parcel.latest_event_time = dhl_info.latest_event_time
+                parcel.latest_event_description = dhl_info.latest_event_description
 
-            # Update ETA only if DHL provides one and we don't have one yet
-            if dhl_info.eta_date and not parcel.eta:
+            if dhl_info.eta_date:
                 parcel.eta = dhl_info.eta_date
                 _LOGGER.debug("DHL ETA for %s: %s", tn, dhl_info.eta_date)
 
@@ -274,15 +287,29 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
                     dhl_info.eta_timeframe_from or dhl_info.eta_timeframe_to
                 )
 
+    @staticmethod
+    def _compare_event_times(candidate: str | None, current: str | None) -> int | None:
+        """Compare event times only when both have compatible timezone information."""
+        if not candidate or not current:
+            return None
+        try:
+            candidate_time = datetime.fromisoformat(candidate)
+            current_time = datetime.fromisoformat(current)
+            return (candidate_time > current_time) - (candidate_time < current_time)
+        except (ValueError, TypeError):
+            return None
+
     async def _cleanup_delivered_parcels(self) -> None:
         """Remove parcels that have been delivered for more than N days."""
         cleanup_days = self.entry.options.get(CONF_CLEANUP_DAYS, DEFAULT_CLEANUP_DAYS)
-        now = datetime.now()
+        now = dt_util.utcnow()
         to_remove: list[str] = []
 
         for tn, parcel in self.store.parcels.items():
             if parcel.status == STATUS_DELIVERED and parcel.delivered_at:
-                delivered_at = datetime.fromisoformat(parcel.delivered_at)
+                delivered_at = dt_util.as_utc(
+                    datetime.fromisoformat(parcel.delivered_at)
+                )
                 if (now - delivered_at) > timedelta(days=cleanup_days):
                     to_remove.append(tn)
 

@@ -21,20 +21,22 @@
     "step": {
       "init": {
         "title": "Parcel Tracker Options",
-        "description": "Configure tracking behavior",
+        "description": "Registration webhook: `{webhook_path}`. Keep this address private. External access is disabled by default.",
         "data": {
           "dhl_api_key": "DHL API Key (optional)",
           "destination_country_code": "Destination country code override (optional)",
           "destination_post_code": "Destination post code override (optional)",
           "cleanup_days": "Days after delivery before auto-removal",
-          "scan_interval_hours": "Polling interval (hours)"
+          "scan_interval_hours": "Polling interval (hours)",
+          "webhook_allow_external": "Allow external registration webhook requests"
         },
         "data_description": {
-          "dhl_api_key": "Optional. Provides delivery time windows for DHL parcels. Get a free key at https://developer.dhl.com",
+          "dhl_api_key": "Optional. Provides direct status updates and delivery estimates for DHL parcels. Get a key at https://developer.dhl.com",
           "destination_country_code": "Optional ISO 3166-1 alpha-2/alpha-3 country code (for example DE). If set, this overrides Home location country.",
           "destination_post_code": "Optional recipient post code/ZIP. If set, this overrides Home location postal code.",
           "cleanup_days": "Number of days after a parcel is delivered before it is automatically removed (1-30)",
-          "scan_interval_hours": "How often to poll Ship24 API for status updates (1-12 hours)"
+          "scan_interval_hours": "How often to poll Ship24 and optional DHL tracking (1-12 hours)",
+          "webhook_allow_external": "Enable only when phone shortcuts need access through an external Home Assistant URL. Anyone with the webhook URL can register parcels."
         }
       }
     },

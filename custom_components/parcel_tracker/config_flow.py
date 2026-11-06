@@ -22,6 +22,8 @@ from .const import (
     CONF_DESTINATION_POST_CODE,
     CONF_DHL_API_KEY,
     CONF_SCAN_INTERVAL_HOURS,
+    CONF_WEBHOOK_ALLOW_EXTERNAL,
+    CONF_WEBHOOK_ID,
     DEFAULT_CLEANUP_DAYS,
     DEFAULT_SCAN_INTERVAL_HOURS,
     DOMAIN,
@@ -135,6 +137,12 @@ class ParcelTrackerOptionsFlow(config_entries.OptionsFlow):
                     ),
                 ): str,
                 vol.Optional(
+                    CONF_WEBHOOK_ALLOW_EXTERNAL,
+                    default=self._config_entry.options.get(
+                        CONF_WEBHOOK_ALLOW_EXTERNAL, False
+                    ),
+                ): bool,
+                vol.Optional(
                     CONF_CLEANUP_DAYS,
                     default=self._config_entry.options.get(
                         CONF_CLEANUP_DAYS, DEFAULT_CLEANUP_DAYS
@@ -167,4 +175,7 @@ class ParcelTrackerOptionsFlow(config_entries.OptionsFlow):
             step_id="init",
             data_schema=data_schema,
             errors=errors,
+            description_placeholders={
+                "webhook_path": f"/api/webhook/{self._config_entry.data.get(CONF_WEBHOOK_ID, '')}"
+            },
         )

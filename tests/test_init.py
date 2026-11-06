@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.parcel_tracker import _handle_webhook
+from custom_components.parcel_tracker import _add_parcel, _handle_webhook
 from custom_components.parcel_tracker.const import (
     CONF_API_KEY,
     CONF_CLEANUP_DAYS,
@@ -165,12 +165,14 @@ async def test_cleanup_removes_entity_registry_entry(hass: HomeAssistant) -> Non
 
 
 @pytest.mark.integration
-async def test_webhook_registered(hass: HomeAssistant) -> None:
+@pytest.mark.parametrize("allow_external", [False, True])
+async def test_webhook_registered(hass: HomeAssistant, allow_external) -> None:
     """Test that the integration registers a webhook on setup."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Parcel Tracker",
         data={CONF_API_KEY: "test_key"},
+        options={"webhook_allow_external": allow_external},
         unique_id=DOMAIN,
     )
     entry.add_to_hass(hass)
@@ -190,7 +192,20 @@ async def test_webhook_registered(hass: HomeAssistant) -> None:
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-    assert "parcel_tracker_register" in hass.data["webhook"]
+        original_id = entry.data["webhook_id"]
+        await hass.config_entries.async_unload(entry.entry_id)
+        await hass.async_block_till_done()
+        assert original_id not in hass.data["webhook"]
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        assert entry.data["webhook_id"] == original_id
+
+    webhook_id = entry.data["webhook_id"]
+    assert len(webhook_id) >= 32
+    assert webhook_id != WEBHOOK_ID
+    assert WEBHOOK_ID not in hass.data["webhook"]
+    assert hass.data["webhook"][webhook_id]["local_only"] is not allow_external
+    assert entry.data[CONF_API_KEY] == "test_key"
 
 
 @pytest.mark.integration
@@ -215,3 +230,58 @@ async def test_webhook_registers_gls_short_tracking_number(
     assert parcel.tracking_url == tracking_url
     mock_store.async_save.assert_awaited_once()
     coordinator.async_request_refresh.assert_awaited_once()
+
+
+@pytest.mark.integration
+async def test_add_accepts_unsupported_url_with_explicit_number(
+    hass, mock_store
+) -> None:
+    coordinator = MagicMock()
+    coordinator.store = mock_store
+    coordinator.async_request_refresh = AsyncMock()
+    success = await _add_parcel(
+        hass,
+        coordinator,
+        tracking_number="TRACK123",
+        tracking_url="https://tools.usps.com/?tLabels=TRACK123",
+        carrier="USPS",
+        courier_code="us-post",
+        shipping_date="2026-05-01",
+        restrict_courier=True,
+    )
+    assert success is True
+    parcel = mock_store.add.call_args.args[0]
+    assert parcel.courier_code == "us-post"
+    assert parcel.shipping_date == "2026-05-01"
+    assert parcel.restrict_courier is True
+
+
+@pytest.mark.integration
+async def test_webhook_accepts_explicit_number_for_unsupported_url(
+    hass, mock_store
+) -> None:
+    coordinator = MagicMock()
+    coordinator.store = mock_store
+    coordinator.async_request_refresh = AsyncMock()
+    hass.data[DOMAIN] = {"test_entry": coordinator}
+    request = MagicMock()
+    request.json = AsyncMock(
+        return_value={
+            "url": "https://tools.usps.com/?tLabels=TRACK123",
+            "tracking_number": "TRACK123",
+            "courier_code": "us-post",
+        }
+    )
+    response = await _handle_webhook(hass, WEBHOOK_ID, request)
+    assert response.status == 200
+    assert mock_store.add.call_args.args[0].courier_code == "us-post"
+
+
+@pytest.mark.parametrize("body", [[], {"url": ["bad"]}, {"tracking_number": ""}])
+async def test_webhook_rejects_invalid_payload(hass, body) -> None:
+    from aiohttp import web
+
+    request = MagicMock()
+    request.json = AsyncMock(return_value=body)
+    with pytest.raises(web.HTTPBadRequest):
+        await _handle_webhook(hass, WEBHOOK_ID, request)

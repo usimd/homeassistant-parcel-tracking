@@ -71,3 +71,23 @@ class TestParcelData:
         assert restored.eta == parcel.eta
         assert restored.description == parcel.description
         assert restored.registered_by == parcel.registered_by
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("courier_code", "us-post"),
+            ("shipping_date", "2026-05-01"),
+            ("restrict_courier", True),
+            (
+                "tracking_request",
+                {"tracking_number": "TRACK123", "courier_code": "us-post"},
+            ),
+            ("status_source", "dhl"),
+            ("latest_event_time", "2026-05-08T10:00:00+00:00"),
+            ("latest_event_description", "Delivered"),
+        ],
+    )
+    def test_tracking_metadata_survives_storage(self, field, value):
+        parcel = ParcelData("TRACK123", "USPS", **{field: value})
+        restored = ParcelData.from_dict(parcel.to_dict())
+        assert getattr(restored, field) == value
