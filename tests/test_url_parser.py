@@ -19,6 +19,10 @@ class TestParseTrackingUrl:
         assert carrier == "DHL"
         assert number == "1234567890123456"
 
+    def test_dhl_url_with_idc_parameter(self):
+        url = "https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html?lang=de&idc=00340434639925540065&rfn=&extendedSearch=true"
+        assert parse_tracking_url(url) == ("DHL", "00340434639925540065")
+
     def test_dpd_url(self):
         """Test DPD URL parsing."""
         url = "https://tracking.dpd.de/status/de_DE/parcel/12345678901234"

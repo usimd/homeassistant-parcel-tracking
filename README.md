@@ -8,7 +8,7 @@
   <a href="https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/test.yaml"><img src="https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/test.yaml/badge.svg" alt="Tests"></a>
   <a href="https://codecov.io/gh/usimd/homeassistant-parcel-tracking"><img src="https://codecov.io/gh/usimd/homeassistant-parcel-tracking/graph/badge.svg" alt="codecov"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/usimd/homeassistant-parcel-tracking" alt="License: Apache 2.0"></a>
-  <a href="https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/hacs.yaml"><img src="https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/hacs.yaml/badge.svg" alt="HACS"></a>
+  <a href="https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/hacs.yaml"><img src="https://github.com/usimd/homeassistant-parcel-tracking/actions/workflows/hacs.yaml/badge.svg" alt="Marketplace validation"></a>
 </p>
 
 <p align="center">
@@ -28,12 +28,12 @@
 
 Requires Home Assistant 2025.10 or newer and a [Ship24 API key](https://dashboard.ship24.com). API quotas and pricing depend on your Ship24 plan.
 
-### HACS
+### Marketplace
 
-1. [Install HACS](https://www.hacs.xyz/docs/use/download/download/) if needed.
-2. Open **HACS**, then its menu and **Custom repositories**.
+1. Open **Marketplace** in Home Assistant.
+2. Open its menu and select **Custom repositories**.
 3. Add `https://github.com/usimd/homeassistant-parcel-tracking` with type **Integration**.
-4. Search for **Parcel Tracker** in HACS and download it.
+4. Search for **Parcel Tracker** in Marketplace and download it.
 5. Restart Home Assistant.
 6. Go to **Settings > Devices & services > Add integration**, select **Parcel Tracker**, and enter your Ship24 API key.
 
@@ -140,7 +140,7 @@ actions:
 
 Add parcel sensors to any built-in Entities card, or use this automatic list. It shows the carrier, status, tracking number, and ETA; tapping a row opens the tracking page.
 
-Install [auto-entities](https://github.com/thomasloven/lovelace-auto-entities) and [template-entity-row](https://github.com/thomasloven/lovelace-template-entity-row) through HACS, then add a **Manual** dashboard card:
+Install [auto-entities](https://github.com/thomasloven/lovelace-auto-entities) and [template-entity-row](https://github.com/thomasloven/lovelace-template-entity-row) through Marketplace, then add a **Manual** dashboard card:
 
 ```yaml
 type: custom:auto-entities

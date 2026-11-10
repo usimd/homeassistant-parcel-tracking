@@ -11,7 +11,7 @@ from .const import (
 )
 
 TRACKING_PARAMETERS = {
-    "DHL": ("piececode", "id"),
+    "DHL": ("piececode", "id", "idc"),
     "DPD": ("parcel", "parcelnumber"),
     "Hermes": ("shipmentid", "trackingnumber"),
     "GLS": ("match", "parcelnumber"),
