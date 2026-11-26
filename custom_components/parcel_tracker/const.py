@@ -102,26 +102,17 @@ CARRIER_TRACKING_URLS: Final = {
     "Amazon": "https://www.amazon.de/progress-tracker/package/{tracking_number}",
 }
 
-# URL patterns for carrier auto-detection.
-# Tuple: (url_domain_pattern, tracking_number_pattern, ship24_courier_code)
-CARRIER_URL_PATTERNS: Final = {
-    "DHL": (r"(?:[a-z0-9-]+\.)*dhl\.de", r"[0-9]{12,20}", "dhl-group"),
-    "DPD": (r"(?:[a-z0-9-]+\.)*dpd\.(?:de|com)", r"[0-9]{14}", "dpd"),
-    "Hermes": (
-        r"(?:[a-z0-9-]+\.)*(?:myhermes\.de|hermesworld\.com)",
-        r"[0-9]{14,16}",
-        "hermes",
-    ),
-    "GLS": (
-        r"(?:[a-z0-9-]+\.)*(?:gls-group\.(?:com|eu)|gls-pakete\.de)",
-        r"[A-Z0-9]{8,14}",
-        "gls",
-    ),
-    "UPS": (r"(?:[a-z0-9-]+\.)*ups\.com", r"1Z[A-Z0-9]{16}", "ups"),
-    "FedEx": (r"(?:[a-z0-9-]+\.)*fedex\.com", r"[0-9]{12,22}", "fedex"),
-    "Amazon": (r"(?:[a-z0-9-]+\.)*amazon\.de", r"[A-Z0-9]{12,}", "amazon"),
+# Carrier hostname patterns and Ship24 courier codes, used as hints only.
+CARRIER_DOMAINS: Final = {
+    "DHL": (r"(?:[a-z0-9-]+\.)*dhl\.de", "dhl-group"),
+    "DPD": (r"(?:[a-z0-9-]+\.)*dpd\.(?:de|com)", "dpd"),
+    "Hermes": (r"(?:[a-z0-9-]+\.)*(?:myhermes\.de|hermesworld\.com)", "hermes"),
+    "GLS": (r"(?:[a-z0-9-]+\.)*(?:gls-group\.(?:com|eu)|gls-pakete\.de)", "gls"),
+    "UPS": (r"(?:[a-z0-9-]+\.)*ups\.com", "ups"),
+    "FedEx": (r"(?:[a-z0-9-]+\.)*fedex\.com", "fedex"),
+    "Amazon": (r"(?:[a-z0-9-]+\.)*amazon\.de", "amazon"),
 }
 
 CARRIER_CODE_ALIASES: Final = {
-    pattern[2]: name for name, pattern in CARRIER_URL_PATTERNS.items()
+    code: name for name, (_, code) in CARRIER_DOMAINS.items()
 } | dict.fromkeys(("dhl", "dhl-germany", "dhl-express"), "DHL")

@@ -1,28 +1,59 @@
 """URL parser for carrier auto-detection."""
 
 import re
-from urllib.parse import parse_qs, quote, unquote, urlsplit
+from urllib.parse import SplitResult, parse_qsl, quote, unquote, urlsplit
 
 from .const import (
     CARRIER_CODE_ALIASES,
+    CARRIER_DOMAINS,
     CARRIER_PREFERENCE_URLS,
     CARRIER_TRACKING_URLS,
-    CARRIER_URL_PATTERNS,
 )
 
-TRACKING_PARAMETERS = {
-    "DHL": ("piececode", "id", "idc"),
-    "DPD": ("parcel", "parcelnumber"),
-    "Hermes": ("shipmentid", "trackingnumber"),
-    "GLS": ("match", "parcelnumber"),
-    "UPS": ("tracknum", "tracknums", "inquiryNumber"),
-    "FedEx": ("trknbr", "trackingnumber"),
-    "Amazon": ("trackingid",),
-}
+TRACKING_PARAMETERS = (
+    "piececode",
+    "idc",
+    "parcel",
+    "parcelnumber",
+    "shipmentid",
+    "trackingnumber",
+    "trackingid",
+    "tracknum",
+    "tracknums",
+    "inquirynumber",
+    "trknbr",
+    "match",
+    "id",
+)
+IGNORED_PARAMETER_PREFIXES = ("utm_", "wt_")
+TOKEN_SEPARATORS = re.compile(r"[/?&=#,;\s]+")
+TRACKING_TOKEN = re.compile(r"(?=[A-Za-z0-9]*[0-9])[A-Za-z0-9]{8,35}")
+
+
+def _tokens(*values: str) -> list[str]:
+    return [token for value in values for token in TOKEN_SEPARATORS.split(value)]
+
+
+def _candidates(parsed: SplitResult) -> list[str]:
+    query = [
+        (key.lower(), value)
+        for key, value in parse_qsl(parsed.query)
+        if not key.lower().startswith(IGNORED_PARAMETER_PREFIXES)
+    ]
+    known = sorted(
+        (item for item in query if item[0] in TRACKING_PARAMETERS),
+        key=lambda item: TRACKING_PARAMETERS.index(item[0]),
+    )
+    return [
+        *_tokens(*(value for _, value in known)),
+        *_tokens(unquote(parsed.fragment)),
+        *reversed(_tokens(unquote(parsed.path))),
+        *_tokens(*(value for key, value in query if key not in TRACKING_PARAMETERS)),
+    ]
 
 
 def parse_tracking_url(url: str) -> tuple[str | None, str | None]:
-    """Parse a tracking URL to extract carrier and tracking number.
+    """Extract a carrier hint and tracking number from a known carrier's URL.
 
     Returns:
         Tuple of (carrier, tracking_number) or (None, None) if not recognized.
@@ -35,33 +66,28 @@ def parse_tracking_url(url: str) -> tuple[str | None, str | None]:
     if parsed.scheme not in ("http", "https"):
         return None, None
 
-    query = {key.lower(): values for key, values in parse_qs(parsed.query).items()}
-    for carrier, (domain_pattern, number_pattern, _) in CARRIER_URL_PATTERNS.items():
-        if not re.fullmatch(domain_pattern, hostname, re.IGNORECASE):
-            continue
-        candidates = [
-            value
-            for parameter in TRACKING_PARAMETERS[carrier]
-            for value in query.get(parameter.lower(), [])
-        ]
-        if not candidates:
-            candidates = [unquote(parsed.fragment)]
-            candidates.extend(unquote(parsed.path).split("/"))
-        for candidate in candidates:
-            if re.fullmatch(number_pattern, candidate, re.IGNORECASE):
-                return carrier, candidate
-    return None, None
+    carrier = next(
+        (
+            name
+            for name, (domain_pattern, _) in CARRIER_DOMAINS.items()
+            if re.fullmatch(domain_pattern, hostname, re.IGNORECASE)
+        ),
+        None,
+    )
+    if carrier is None:
+        return None, None
+    number = next(
+        (token for token in _candidates(parsed) if TRACKING_TOKEN.fullmatch(token)),
+        None,
+    )
+    return (carrier, number) if number else (None, None)
 
 
 def _carrier_key(carrier: str, courier_code: str | None) -> str:
     if courier_code and courier_code.lower() in CARRIER_CODE_ALIASES:
         return CARRIER_CODE_ALIASES[courier_code.lower()]
     return next(
-        (
-            name
-            for name in CARRIER_URL_PATTERNS
-            if name.casefold() == carrier.casefold()
-        ),
+        (name for name in CARRIER_DOMAINS if name.casefold() == carrier.casefold()),
         carrier,
     )
 

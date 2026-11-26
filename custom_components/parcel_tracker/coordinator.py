@@ -14,7 +14,7 @@ from homeassistant.util import dt as dt_util
 
 from .api import Ship24Api, TrackingInfo
 from .const import (
-    CARRIER_URL_PATTERNS,
+    CARRIER_DOMAINS,
     CONF_CLEANUP_DAYS,
     CONF_DESTINATION_COUNTRY_CODE,
     CONF_DESTINATION_POST_CODE,
@@ -94,8 +94,8 @@ class ParcelTrackerCoordinator(DataUpdateCoordinator[dict[str, ParcelData]]):
                 else:
                     if parcel.tracking_request is None:
                         courier_hint = parcel.courier_code
-                        if not courier_hint and parcel.carrier in CARRIER_URL_PATTERNS:
-                            courier_hint = CARRIER_URL_PATTERNS[parcel.carrier][2]
+                        if not courier_hint and parcel.carrier in CARRIER_DOMAINS:
+                            courier_hint = CARRIER_DOMAINS[parcel.carrier][1]
                         elif not courier_hint and parcel.carrier != "Unknown":
                             couriers = await self.api.get_couriers()
                             for code, courier in couriers.items():
