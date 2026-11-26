@@ -12,12 +12,16 @@ from custom_components.parcel_tracker.url_parser import (
 class TestParseTrackingUrl:
     """Tests for parse_tracking_url."""
 
-    def test_dhl_url(self):
+    @pytest.mark.parametrize(
+        "tracking_number",
+        ["1234567890123456", "JVGL4004549300504665", "JJD000390007865612345"],
+    )
+    def test_dhl_url(self, tracking_number):
         """Test DHL URL parsing."""
-        url = "https://www.dhl.de/de/privatkunden/dhl-sendungsverfolgung.html?piececode=1234567890123456"
+        url = f"https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html?piececode={tracking_number}"
         carrier, number = parse_tracking_url(url)
         assert carrier == "DHL"
-        assert number == "1234567890123456"
+        assert number == tracking_number
 
     def test_dhl_url_with_idc_parameter(self):
         url = "https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html?lang=de&idc=00340434639925540065&rfn=&extendedSearch=true"
@@ -37,12 +41,25 @@ class TestParseTrackingUrl:
         assert carrier == "UPS"
         assert number == "1Z12345E6605272234"
 
-    def test_hermes_url(self):
+    @pytest.mark.parametrize(
+        ("url", "expected"),
+        [
+            (
+                "https://www.myhermes.de/empfangen/sendungsverfolgung/sendungsinformation#12345678901234",
+                "12345678901234",
+            ),
+            (
+                "https://www.myhermes.de/empfangen/sendungsverfolgung/sendungsinformation/"
+                "?wt_cc1=sendungsnummer&wt_mc=re_zn2#H1033470101416401081",
+                "H1033470101416401081",
+            ),
+        ],
+    )
+    def test_hermes_url(self, url, expected):
         """Test Hermes URL parsing."""
-        url = "https://www.myhermes.de/empfangen/sendungsverfolgung/sendungsinformation#12345678901234"
         carrier, number = parse_tracking_url(url)
         assert carrier == "Hermes"
-        assert number == "12345678901234"
+        assert number == expected
 
     @pytest.mark.parametrize(
         "domain", ["gls-group.com", "gls-group.eu", "gls-pakete.de"]
@@ -84,6 +101,47 @@ class TestParseTrackingUrl:
     def test_reads_named_tracking_parameter(self):
         url = "https://www.dhl.de/?order=111111111111&piececode=222222222222"
         assert parse_tracking_url(url) == ("DHL", "222222222222")
+
+    @pytest.mark.parametrize(
+        ("url", "expected"),
+        [
+            ("https://www.dhl.de/?piececode=LX123456789DE", "LX123456789DE"),
+            (
+                "https://www.ups.com/track?tracknums=1Z12345E6605272234,1Z0000000000000000",
+                "1Z12345E6605272234",
+            ),
+            (
+                "https://www.dhl.de/?utm_source=app12345678&piececode=00340434161234567890",
+                "00340434161234567890",
+            ),
+            (
+                "https://www.myhermes.de/track?wt_mc=abc12345678#H1033470101416401081",
+                "H1033470101416401081",
+            ),
+            (
+                "https://www.dpd.de/de_DE/parcel/12345678901234/details",
+                "12345678901234",
+            ),
+            (
+                "https://www.amazon.de/progress-tracker/package/?ref=x&foo=TBA123456789012",
+                "TBA123456789012",
+            ),
+        ],
+    )
+    def test_extracts_number_without_carrier_format(self, url, expected):
+        assert parse_tracking_url(url)[1] == expected
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html",
+            "https://www.dhl.de/?piececode=1234567",
+            "https://www.dhl.de/?piececode=ABCDEFGHIJ",
+            "https://www.dhl.de/?utm_campaign=12345678901234",
+        ],
+    )
+    def test_rejects_url_without_tracking_token(self, url):
+        assert parse_tracking_url(url) == (None, None)
 
     def test_preserves_alphanumeric_tracking_number(self):
         url = "https://gls-group.eu/DE/de/paketverfolgung?match=Ab12Cd34"
